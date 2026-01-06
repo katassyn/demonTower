@@ -1,0 +1,74 @@
+name: DemonTower
+version: '1.0-SNAPSHOT'
+main: pl.yourserver.demonTowerPlugin.DemonTowerPlugin
+api-version: '1.20'
+description: Demon Tower dungeon system with waves, bosses, and floor progression
+
+depend:
+  - MythicMobs
+  - Essentials
+
+softdepend:
+  - Vault
+
+commands:
+  dt_join:
+    description: Open Demon Tower GUI / Join lobby
+    usage: /<command>
+  dt_reset:
+    description: Reset the current session (admin)
+    usage: /<command>
+    permission: demontower.admin
+  dt_reload:
+    description: Reload configuration (admin)
+    usage: /<command>
+    permission: demontower.admin
+  whododt:
+    description: Show who is currently in Demon Tower
+    usage: /<command>
+  dt_drops:
+    description: Manage floor drop previews (admin)
+    usage: /<command>
+    permission: demontower.admin
+  dt_blacksmith:
+    description: Open Corrupted Blacksmith GUI (Floor 1 mechanic)
+    usage: /<command>
+    permission: demontower.mechanic.blacksmith
+  dt_smelter:
+    description: Open Demonic Smelter GUI (Floor 2 mechanic)
+    usage: /<command>
+    permission: demontower.mechanic.smelter
+  dt_divine:
+    description: Open Divine Source GUI (Floor 3 mechanic)
+    usage: /<command>
+    permission: demontower.mechanic.divine
+  dt_crucible:
+    description: Open Infernal Crucible GUI (Floor 4 mechanic)
+    usage: /<command>
+    permission: demontower.mechanic.crucible
+  dt_gui:
+    description: Open floor mechanic GUI (after boss kill)
+    usage: /<command>
+
+permissions:
+  demontower.play:
+    description: Allows playing Demon Tower
+    default: true
+  demontower.admin:
+    description: Allows admin commands (reset, reload)
+    default: op
+  demontower.gui:
+    description: Allows opening Demon Tower GUI via NPC
+    default: true
+  demontower.mechanic.blacksmith:
+    description: Allows using Corrupted Blacksmith (Floor 1 mechanic)
+    default: false
+  demontower.mechanic.smelter:
+    description: Allows using Demonic Smelter (Floor 2 mechanic)
+    default: false
+  demontower.mechanic.divine:
+    description: Allows using Divine Source (Floor 3 mechanic)
+    default: false
+  demontower.mechanic.crucible:
+    description: Allows using Infernal Crucible (Floor 4 mechanic)
+    default: false

@@ -1,0 +1,347 @@
+# Debug mode - for testing purposes
+# When enabled:
+# - Lobby countdown is 5 seconds instead of normal time
+# - Wave/stage completes immediately after killing: boss, mini-boss, or 5 mobs
+# - No waiting for stage timer to end
+debug_mode: false
+
+# Database configuration for floor drops
+database:
+  enabled: true
+  host: "localhost"
+  port: 3306
+  database: "demontower"
+  username: "root"
+  password: ""
+  pool_size: 10
+
+demon_tower:
+  # Percentage of mobs required to complete a wave (0.0 - 1.0)
+  # Boss must always be killed (100%)
+  wave_completion_percentage: 0.95
+
+  # Lobby time in seconds (players can join and PvP, then wave auto-starts)
+  lobby_time: 300
+
+  # Minimum time to wait at each stage even if completed early (seconds)
+  stage_wait_time: 300
+
+  # Floor at which blocking is lifted (players can join new session again)
+  unblock_floor: 3
+
+  # Spawn radius around spawn points (mobs will spawn within this radius)
+  spawn_radius: 4
+
+  floors:
+    1:
+      required_level: 60
+      stages:
+        1:
+          type: LOBBY
+          warp: "dt_1_1"
+          time: 300  # 5 min wave after lobby countdown
+          mobs:
+            hellfire_imp_dt1: 120
+            infernal_guard_dt1: 80
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2167, y: -60, z: 207}
+              - {world: "world", x: 2232, y: -60, z: 206}
+              - {world: "world", x: 2203, y: -60, z: 170}
+        2:
+          type: WAVE
+          warp: "dt_1_2"
+          time: 300
+          mobs:
+            hellfire_imp_dt1: 100
+            infernal_guard_dt1: 60
+            flame_cultist_dt1: 40
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2027, y: -60, z: 202}
+              - {world: "world", x: 2103, y: -60, z: 196}
+              - {world: "world", x: 2061, y: -60, z: 161}
+        3:
+          type: WAVE
+          warp: "dt_1_3"
+          time: 300
+          mobs:
+            flame_cultist_dt1: 80
+            shadow_knight_dt1: 60
+            hellborn_berserker_dt1: 60
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2022, y: -60, z: 331}
+              - {world: "world", x: 2096, y: -60, z: 325}
+              - {world: "world", x: 2057, y: -60, z: 290}
+        4:
+          type: BOSS
+          warp: "dt_1_4"
+          time: 600
+          mobs:
+            infernal_champion_dt1: 50
+            hellborn_berserker_dt1: 50
+          boss: valgroth_dark_monarch
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2162, y: -60, z: 328}
+              - {world: "world", x: 2232, y: -60, z: 323}
+            boss: {world: "world", x: 2194, y: -60, z: 287}
+
+    2:
+      required_level: 70
+      required_key: "demon_tower_key_II"
+      stages:
+        1:
+          type: COLLECT
+          warp: "dt_2_1"
+          collect_item: "dt2_collect_item"
+          collect_amount: 10
+          mobs:
+            legion_footsoldier_dt2: 100
+            hellhound_dt2: 100
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2222, y: -59, z: 463}
+              - {world: "world", x: 2290, y: -59, z: 458}
+              - {world: "world", x: 2249, y: -59, z: 420}
+        2:
+          type: WAVE
+          warp: "dt_2_2"
+          time: 300
+          mobs:
+            throne_acolyte_dt2: 100
+            legion_centurion_dt2: 100
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2083, y: -59, z: 459}
+              - {world: "world", x: 2150, y: -59, z: 454}
+              - {world: "world", x: 2107, y: -59, z: 416}
+        3:
+          type: WAVE
+          warp: "dt_2_3"
+          time: 300
+          mobs:
+            infernal_warden_dt2: 100
+            legion_centurion_dt2: 100
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2076, y: -59, z: 487}
+              - {world: "world", x: 2148, y: -59, z: 581}
+              - {world: "world", x: 2105, y: -59, z: 544}
+        4:
+          type: BOSS
+          warp: "dt_2_4"
+          time: 600
+          mobs:
+            throne_guardian_dt2: 50
+            legion_centurion_dt2: 50
+          boss: azhramorth_throne_lord
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2216, y: -59, z: 586}
+              - {world: "world", x: 2283, y: -59, z: 579}
+            boss: {world: "world", x: 2243, y: -59, z: 542}
+
+    3:
+      required_level: 80
+      required_key: "demon_tower_key_III"
+      stages:
+        1:
+          type: WAVE
+          warp: "dt_3_1"
+          time: 300
+          mobs:
+            void_spawn_dt3: 100
+            abyssal_warrior_dt3: 100
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2224, y: -60, z: 711}
+              - {world: "world", x: 2292, y: -60, z: 706}
+              - {world: "world", x: 2250, y: -60, z: 667}
+        2:
+          type: WAVE
+          warp: "dt_3_2"
+          time: 300
+          mobs:
+            shattered_horror_dt3: 80
+            void_knight_dt3: 60
+            abyss_walker_dt3: 60
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2084, y: -60, z: 707}
+              - {world: "world", x: 2151, y: -60, z: 702}
+              - {world: "world", x: 2111, y: -60, z: 662}
+        3:
+          type: BOSS
+          warp: "dt_3_3"
+          time: 600
+          mobs:
+            rift_guardian_dt3: 50
+            abyss_walker_dt3: 50
+          boss: korthamoth_abyss_guardian
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2079, y: -60, z: 837}
+              - {world: "world", x: 2146, y: -60, z: 828}
+            boss: {world: "world", x: 2107, y: -60, z: 793}
+
+    4:
+      required_level: 90
+      required_key: "demon_tower_key_IV"
+      stages:
+        1:
+          type: WAVE
+          warp: "dt_4_1"
+          time: 300
+          mobs:
+            primordial_shade_dt4: 100
+            ancient_tormentor_dt4: 100
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2085, y: -60, z: 956}
+              - {world: "world", x: 2152, y: -60, z: 946}
+              - {world: "world", x: 2110, y: -60, z: 914}
+        2:
+          type: COLLECT
+          warp: "dt_4_2"
+          collect_item: "dt4_collect_item"
+          collect_amount: 15
+          mobs:
+            shadow_ripper_dt4: 100
+            primordial_shade_dt4: 100
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2224, y: -60, z: 960}
+              - {world: "world", x: 2290, y: -60, z: 954}
+              - {world: "world", x: 2250, y: -60, z: 916}
+        3:
+          type: WAVE
+          warp: "dt_4_3"
+          time: 300
+          mobs:
+            primordial_knight_dt4: 100
+            eternal_executioner_dt4: 100
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2216, y: -60, z: 1082}
+              - {world: "world", x: 2282, y: -60, z: 1075}
+              - {world: "world", x: 2242, y: -60, z: 1038}
+        4:
+          type: BOSS
+          warp: "dt_4_4"
+          time: 600
+          mobs:
+            shadow_prophet_dt4: 50
+            eternal_executioner_dt4: 50
+          boss: vharzhul_ancient_ripper
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2079, y: -60, z: 1085}
+              - {world: "world", x: 2143, y: -60, z: 1079}
+            boss: {world: "world", x: 2109, y: -60, z: 1042}
+        5:
+          type: WAVE
+          warp: "dt_4_5"
+          time: 300
+          mobs:
+            primordial_knight_dt4: 80
+            shadow_prophet_dt4: 60
+            ancient_warden_dt4: 60
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2084, y: -60, z: 1228}
+              - {world: "world", x: 2150, y: -60, z: 1219}
+              - {world: "world", x: 2112, y: -60, z: 1185}
+        6:
+          type: WAVE
+          warp: "dt_4_6"
+          time: 300
+          mobs:
+            ancient_warden_dt4: 100
+            shadow_prophet_dt4: 100
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2224, y: -60, z: 1231}
+              - {world: "world", x: 2292, y: -60, z: 1225}
+              - {world: "world", x: 2254, y: -60, z: 1193}
+        7:
+          type: BOSS
+          warp: "dt_4_7"
+          time: 900
+          mobs:
+            primordial_knight_dt4: 75
+            eternal_executioner_dt4: 75
+          boss: acheron_buried_in_shadows
+          spawn_points:
+            mobs:
+              - {world: "world", x: 2216, y: -60, z: 1350}
+              - {world: "world", x: 2287, y: -60, z: 1347}
+            boss: {world: "world", x: 2246, y: -60, z: 1311}
+
+  messages:
+    wave_start: "&c&lWave started! You have %time% seconds!"
+    wave_complete: "&a&lWave completed!"
+    time_up: "&4&lTime's up! You have been defeated..."
+    boss_spawned: "&4&l%boss% has appeared!"
+    collect_progress: "&eCollected: &a%current%&7/&a%required%"
+    floor_complete: "&a&lFloor %floor% completed!"
+    player_joined: "&a%player% &7joined Demon Tower!"
+    player_left: "&c%player% &7left Demon Tower!"
+    not_enough_level: "&cYou need level &e%level%&c to enter this floor!"
+    missing_key: "&cYou need the key &e%key%&c to enter this floor!"
+    session_in_progress: "&cA Demon Tower session is in progress! Wait until it ends."
+    countdown: "&e%time%"
+    stage_cleared: "&a&lStage cleared!"
+    dt_starting: "&6&lDemon Tower starts in &c%time% &6seconds!"
+    joining_disabled: "&cJoining is disabled - wait until floor 3 is reached!"
+    lobby_countdown: "&eLobby time remaining: &c%time%"
+    lobby_starting: "&a&lWave starting in &c%time% &aseconds!"
+    waiting_next_stage: "&7Waiting for next stage... &e%time%s"
+    dt_blocked: "&cDemon Tower is blocked! Wait until floor 3 is reached."
+    already_in_dt: "&cYou are already in Demon Tower!"
+    not_in_dt: "&cYou are not in Demon Tower!"
+    floor_transition: "&6&lAdvancing to Floor &c%floor%&6!"
+    boss_defeated: "&a&lBoss defeated! You may proceed!"
+    collect_complete: "&a&lAll required items collected!"
+    mobs_remaining: "&7Mobs remaining: &c%count%"
+    wave_progress: "&7Wave progress: &a%killed%&7/&a%total% &7(&e%percent%%&7)"
+
+  # Floor completion mechanics
+  mechanics:
+    # Floor 1 - Corrupted Blacksmith
+    corrupted_blacksmith:
+      enabled: true
+      cost: 1000000  # 1m$
+      # smith_stone item ID in MythicMobs for reroll
+      smith_stone: "smith_stone"
+
+    # Floor 2 - Demonic Smelter
+    demonic_smelter:
+      enabled: true
+      cost: 50000000  # 50m$
+
+    # Floor 3 - Divine Source
+    divine_source:
+      enabled: true
+      cost: 300000000  # 300m$
+      # Stat multipliers
+      main_boost: 1.5   # +50% to one random stat
+      other_boost: 1.25 # +25% to all other stats
+
+    # Floor 4 - Infernal Crucible
+    infernal_crucible:
+      enabled: true
+      cost: 1000000000  # 1b$
+      # Stat multiplier for fusion
+      multiplier: 2.0   # Double all stats
+
+  mechanic_messages:
+    corrupted_blacksmith_success: "&4&lCorrupted Blacksmith: &7Your item has been corrupted!"
+    corrupted_blacksmith_reroll: "&6&lCorrupted Blacksmith: &7You used a Corrupted Smithing Stone to reroll!"
+    demonic_smelter_success: "&6&lDemonic Smelter: &7Your items have been merged!"
+    divine_source_success: "&9&lDivine Source: &7Your accessory has been blessed by divine power!"
+    infernal_crucible_success: "&5&lInfernal Crucible: &7An ULTIMATE item has been forged!"
+    insufficient_funds: "&cYou don't have enough money!"
+    transaction_failed: "&cTransaction failed!"
+    ultimate_equip_limit: "&5&lULTIMATE: &cYou can only have ONE ULTIMATE item equipped at a time!"
