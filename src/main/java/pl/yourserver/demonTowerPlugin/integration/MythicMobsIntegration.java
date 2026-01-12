@@ -1,10 +1,8 @@
 package pl.yourserver.demonTowerPlugin.integration;
 
-import io.lumine.mythic.api.MythicPlugin;
-import io.lumine.mythic.api.mobs.MythicMob;
-import io.lumine.mythic.bukkit.BukkitAdapter;
 import io.lumine.mythic.bukkit.MythicBukkit;
 import io.lumine.mythic.core.mobs.ActiveMob;
+import io.lumine.mythic.api.mobs.MythicMob;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -56,13 +54,10 @@ public class MythicMobsIntegration {
     }
 
     public UUID spawnMobAtLocation(String mobType, Location location) {
-        // FIX: Zmieniono na FALSE, aby uniknąć podwójnego losowania pozycji (config radius + ten hardcoded offset)
+        // FIX: Ustawiono na false, aby uniknąć podwójnego losowania pozycji
         return spawnMobAtLocation(mobType, location, false);
     }
 
-    /**
-     * Spawn mob at exact location (no offset) - for bosses
-     */
     public UUID spawnMobAtExactLocation(String mobType, Location location) {
         return spawnMobAtLocation(mobType, location, false);
     }
@@ -79,7 +74,6 @@ public class MythicMobsIntegration {
 
             Location spawnLoc = location.clone();
             if (withOffset) {
-                // Add random offset to prevent stacking (for regular mobs)
                 double offsetX = (Math.random() - 0.5) * 10;
                 double offsetZ = (Math.random() - 0.5) * 10;
                 spawnLoc.add(offsetX, 0, offsetZ);
@@ -94,6 +88,36 @@ public class MythicMobsIntegration {
         }
 
         return null;
+    }
+
+    /**
+     * NOWA METODA: Sprawdza, czy mob faktycznie istnieje w świecie gry.
+     * Służy do usuwania "duchów" (ghost mobs) z licznika sesji.
+     */
+    public boolean isMobValid(UUID mobId) {
+        if (!enabled) return false;
+
+        Optional<ActiveMob> activeMobOpt = mythicMobs.getMobManager().getActiveMob(mobId);
+
+        // Jeśli MythicMobs nie ma tego moba w rejestrze, to znaczy, że zniknął
+        if (activeMobOpt.isEmpty()) {
+            return false;
+        }
+
+        ActiveMob activeMob = activeMobOpt.get();
+        Entity entity = activeMob.getEntity().getBukkitEntity();
+
+        // Jeśli entity bukkita nie istnieje lub jest martwe
+        if (entity == null || entity.isDead() || !entity.isValid()) {
+            return false;
+        }
+
+        // Jeśli chunk jest niezaładowany, uznajemy moba za "poprawnego" (istnieje, ale daleko)
+        if (!entity.getLocation().getChunk().isLoaded()) {
+            return true;
+        }
+
+        return true;
     }
 
     public void killMob(UUID mobId) {
@@ -132,17 +156,13 @@ public class MythicMobsIntegration {
         return activeMob.map(mob -> mob.getMobType()).orElse(null);
     }
 
-    /**
-     * Get the display name of a MythicMob type from its configuration
-     * @param mobType The internal mob type name
-     * @return The display name or null if not found
-     */
     public String getMobDisplayName(String mobType) {
         if (!enabled) return null;
 
         try {
             Optional<MythicMob> mythicMob = mythicMobs.getMobManager().getMythicMob(mobType);
             if (mythicMob.isPresent()) {
+                // Obsługa starszych i nowszych wersji API MythicMobs
                 return mythicMob.get().getDisplayName().get();
             }
         } catch (Exception e) {
@@ -151,44 +171,28 @@ public class MythicMobsIntegration {
         return null;
     }
 
-    /**
-     * Check if a mob type is an Elite based on display name color (&e&l = yellow bold)
-     */
     public boolean isEliteMob(String mobType) {
         String displayName = getMobDisplayName(mobType);
         if (displayName == null) return false;
-        // Elite mobs have yellow bold display name: &e&l
         return displayName.startsWith("&e&l") || displayName.startsWith("§e§l");
     }
 
-    /**
-     * Check if a mob type is a Mini Boss based on display name color (&5&l = purple bold)
-     */
     public boolean isMiniBoss(String mobType) {
         String displayName = getMobDisplayName(mobType);
         if (displayName == null) return false;
-        // Mini bosses have purple bold display name: &5&l
         return displayName.startsWith("&5&l") || displayName.startsWith("§5§l");
     }
 
-    /**
-     * Check if a mob type is a Boss based on display name (contains skull symbol)
-     */
     public boolean isBossMob(String mobType) {
         String displayName = getMobDisplayName(mobType);
         if (displayName == null) return false;
-        // Bosses have skull in display name: &4<&skull>
-        return displayName.contains("&4<&skull>") || displayName.contains("§4") && displayName.contains("skull");
+        return displayName.contains("&4<&skull>") || (displayName.contains("§4") && displayName.contains("skull"));
     }
 
-    /**
-     * Check if a mob type is a normal mob (not elite, mini boss, or boss)
-     */
     public boolean isNormalMob(String mobType) {
         return !isEliteMob(mobType) && !isMiniBoss(mobType) && !isBossMob(mobType);
     }
 
-    // MythicMobs item methods
     public boolean hasItem(Player player, String itemId) {
         if (!enabled) return false;
 

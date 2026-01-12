@@ -40,7 +40,10 @@ public class MobDeathListener implements Listener {
         DemonTowerSession session = plugin.getSessionManager().getCurrentSession();
         if (session != null && session.getAliveMobs().contains(mobId)) {
             debug("  -> Mob is tracked, calling handleVirtualCollect then onMobKilled");
+
+            // Obsługa dropu PRZED usunięciem moba z listy (bo onMobKilled go usuwa)
             handleVirtualCollect(session);
+
             session.onMobKilled(mobId);
         } else {
             debug("  -> Mob is NOT tracked");
@@ -61,7 +64,9 @@ public class MobDeathListener implements Listener {
         DemonTowerSession session = plugin.getSessionManager().getCurrentSession();
         if (session != null && session.getAliveMobs().contains(mobId)) {
             debug("  -> Mob is tracked, calling handleVirtualCollect then onMobKilled (fallback)");
+
             handleVirtualCollect(session);
+
             session.onMobKilled(mobId);
         }
     }
@@ -69,15 +74,6 @@ public class MobDeathListener implements Listener {
     /**
      * Wirtualny system dropu z PROGRESYWNĄ SZANSĄ.
      * Zamiast "sztywnego 100% na końcu", szansa rośnie liniowo z każdym zabitym mobem bez dropu.
-     * Algorytm:
-     * 1. Obliczamy "teoretyczną średnią" (np. 1 item co 10 mobów).
-     * 2. Każdy zabity mob bez dropu dodaje cegiełkę do szansy (1/średnia).
-     * 3. Przykład: Średnia co 10 mobów.
-     * Kill 1: szansa 10%
-     * Kill 2: szansa 20%
-     * ...
-     * Kill 10: szansa 100% (gwarantowany)
-     * To zapewnia płynny przebieg i eliminuje "bad luck".
      */
     private void handleVirtualCollect(DemonTowerSession session) {
         if (session.getState() != SessionState.COLLECTING) return;
@@ -95,15 +91,13 @@ public class MobDeathListener implements Listener {
         if (collected >= required) return; // Już zebrano wystarczająco
 
         // Obliczamy ile mobów przypada na 1 item (np. 200 mobów / 20 itemów = 10 mobów na item)
-        // Zabezpieczenie przed dzieleniem przez zero
         double avgMobsPerItem = (double) totalMobs / (double) required;
         if (avgMobsPerItem < 1.0) avgMobsPerItem = 1.0;
 
-        // Szansa bazowa za jedno zabicie (np. 0.1 czyli 10%)
+        // Szansa bazowa za jedno zabicie
         double chanceIncrement = 1.0 / avgMobsPerItem;
 
         // Progresywna szansa: (liczba zabitych od ostatniego dropu + 1) * przyrost
-        // Dodajemy +1, żeby już pierwszy mob miał szansę (bazową)
         int killsSinceLast = session.getKillsSinceLastDrop();
         double currentChance = (killsSinceLast + 1) * chanceIncrement;
 
@@ -113,12 +107,9 @@ public class MobDeathListener implements Listener {
                 ", currentChance=" + String.format("%.2f%%", currentChance * 100));
 
         if (Math.random() < currentChance) {
-            // Sukces - zaliczamy drop
             debug("  -> VIRTUAL DROP SUCCESS!");
             session.onItemCollected(1);
-            // Licznik resetuje się wewnątrz onItemCollected
         } else {
-            // Porażka - zwiększamy licznik "pecha", następny mob będzie miał większą szansę
             debug("  -> Virtual drop failed (RNG). Incrementing luck counter.");
             session.incrementKillsSinceLastDrop();
         }

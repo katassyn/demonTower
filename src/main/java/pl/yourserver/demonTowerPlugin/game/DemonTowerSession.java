@@ -6,6 +6,7 @@ import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import pl.yourserver.demonTowerPlugin.DemonTowerPlugin;
 import pl.yourserver.demonTowerPlugin.config.FloorConfig;
+import pl.yourserver.demonTowerPlugin.config.SpawnPoint;
 import pl.yourserver.demonTowerPlugin.config.StageConfig;
 import pl.yourserver.demonTowerPlugin.integration.MythicMobsIntegration;
 import pl.yourserver.demonTowerPlugin.utils.MessageUtils;
@@ -27,7 +28,7 @@ public class DemonTowerSession {
 
     // Zmienne dropu
     private int collectedItems;
-    private int killsSinceLastDrop; // NOWE: Licznik do progresywnej szansy
+    private int killsSinceLastDrop;
 
     private int totalMobCount = 0;
 
@@ -36,6 +37,7 @@ public class DemonTowerSession {
     private BukkitTask lobbyCountdownTask;
     private BukkitTask stageWaitTask;
     private BukkitTask floorTransitionTask;
+    private BukkitTask sanityTask;
 
     private boolean lobbyCountdownStarted = false;
     private boolean stageCleared = false;
@@ -82,21 +84,15 @@ public class DemonTowerSession {
         }
 
         if (players.add(player.getUniqueId())) {
-            if (partyLeader == null) {
-                partyLeader = player.getUniqueId();
-            }
-
+            if (partyLeader == null) partyLeader = player.getUniqueId();
             StageConfig lobbyStage = floor.getFirstStage();
             if (lobbyStage != null) {
                 plugin.getEssentialsIntegration().warpPlayer(player, lobbyStage.getWarp());
             }
-
             MessageUtils.sendMessage(player, plugin.getConfigManager().getMessage("player_joined", "player", player.getName()));
-
             if (!lobbyCountdownStarted && lobbyStage != null && lobbyStage.getType() == StageType.LOBBY) {
                 startLobbyCountdown();
             }
-
             return true;
         }
         return false;
@@ -159,6 +155,7 @@ public class DemonTowerSession {
         debugKillCount = 0;
 
         spawnMobs(stage);
+        startSanityCheck();
         startTimer(stage.getTimeSeconds());
         broadcastTitle("&c&lWAVE STARTED!",
                 "&7Kill &e95%&7 of mobs! Time: &e" + MessageUtils.formatTime(stage.getTimeSeconds()), 10, 60, 10);
@@ -191,7 +188,7 @@ public class DemonTowerSession {
         bossId = null;
         totalMobCount = 0;
         collectedItems = 0;
-        killsSinceLastDrop = 0; // Reset licznika dropu
+        killsSinceLastDrop = 0;
         debugKillCount = 0;
 
         switch (stage.getType()) {
@@ -202,6 +199,7 @@ public class DemonTowerSession {
                 state = SessionState.ACTIVE;
                 teleportAllPlayers(stage.getWarp());
                 spawnMobs(stage);
+                startSanityCheck();
                 startTimer(stage.getTimeSeconds());
                 broadcastTitle("&c&lWAVE " + currentStage,
                         "&7Time: &e" + MessageUtils.formatTime(stage.getTimeSeconds()), 10, 40, 10);
@@ -211,6 +209,7 @@ public class DemonTowerSession {
                 teleportAllPlayers(stage.getWarp());
                 spawnMobs(stage);
                 spawnBoss(stage);
+                startSanityCheck();
                 startTimer(stage.getTimeSeconds());
                 broadcastTitle("&4&lBOSS", "&c" + formatMobName(stage.getBoss()), 10, 60, 10);
                 break;
@@ -218,6 +217,7 @@ public class DemonTowerSession {
                 state = SessionState.COLLECTING;
                 teleportAllPlayers(stage.getWarp());
                 spawnMobs(stage);
+                startSanityCheck();
                 startCollectTimer(stage);
                 broadcastTitle("&6&lCOLLECTING",
                         "&7Collect &e" + stage.getCollectAmount() + " &7items", 10, 40, 10);
@@ -225,63 +225,115 @@ public class DemonTowerSession {
         }
     }
 
-    public int getCollectedItems() {
-        return collectedItems;
+    private void startSanityCheck() {
+        if (sanityTask != null && !sanityTask.isCancelled()) sanityTask.cancel();
+
+        sanityTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (state != SessionState.ACTIVE && state != SessionState.COLLECTING && state != SessionState.BOSS) return;
+
+                Iterator<UUID> it = aliveMobs.iterator();
+                boolean changed = false;
+
+                while (it.hasNext()) {
+                    UUID mobId = it.next();
+                    if (!plugin.getMythicMobsIntegration().isMobValid(mobId)) {
+                        it.remove();
+                        totalMobCount--;
+                        changed = true;
+
+                        if (plugin.getConfigManager().isDebugMode()) {
+                            plugin.getLogger().info("[DT Sanity] Removed ghost mob: " + mobId + ". New Total: " + totalMobCount);
+                        }
+                    }
+                }
+
+                if (changed) {
+                    if (totalMobCount < 0) totalMobCount = 0;
+                    checkStageComplete();
+                }
+            }
+        }.runTaskTimer(plugin, 100L, 100L);
     }
 
-    // NOWE METODY DO OBSŁUGI DROPU
-    public int getKillsSinceLastDrop() {
-        return killsSinceLastDrop;
-    }
-
-    public void incrementKillsSinceLastDrop() {
-        this.killsSinceLastDrop++;
-    }
+    public int getCollectedItems() { return collectedItems; }
+    public int getKillsSinceLastDrop() { return killsSinceLastDrop; }
+    public void incrementKillsSinceLastDrop() { this.killsSinceLastDrop++; }
 
     private void spawnMobs(StageConfig stage) {
-        double spawnRadius = plugin.getConfigManager().getSpawnRadius();
+        double spawnRadius = plugin.getConfigManager().getSpawnRadius() + 5.0;
         MythicMobsIntegration mythicMobs = plugin.getMythicMobsIntegration();
 
         for (Map.Entry<String, Integer> entry : stage.getMobs().entrySet()) {
             String mobType = entry.getKey();
-            int count = entry.getValue();
+            int countNeeded = entry.getValue();
 
             if (mythicMobs.isEliteMob(mobType)) {
                 spawnElitesAtAllPoints(mobType, stage, spawnRadius);
             } else if (mythicMobs.isMiniBoss(mobType)) {
-                if (stage.hasBoss()) {
-                    spawnMiniBossAtPoints1And2(mobType, stage, spawnRadius);
-                } else {
-                    spawnMiniBossAtPoint3(mobType, stage, spawnRadius);
-                }
+                if (stage.hasBoss()) spawnMiniBossAtPoints1And2(mobType, stage, spawnRadius);
+                else spawnMiniBossAtPoint3(mobType, stage, spawnRadius);
             } else {
-                // FIX: Jeszcze bardziej agresywna pętla spawnowania
-                int spawned = 0;
-                int attempts = 0;
-                // Zwiększamy limit prób do 50x, aby mieć pewność, że znajdziemy miejsce
-                int maxAttempts = count * 50;
+                int spawnedTotal = 0;
 
-                while (spawned < count && attempts < maxAttempts) {
+                if (stage.hasSpawnPoints()) {
+                    List<SpawnPoint> points = stage.getMobSpawnPoints();
+                    int pointsCount = points.size();
+
+                    if (pointsCount > 0) {
+                        int mobsPerPoint = countNeeded / pointsCount;
+
+                        for (int i = 0; i < pointsCount; i++) {
+                            int spawnedAtThisPoint = 0;
+                            int attempts = 0;
+                            int limitAttempts = (mobsPerPoint > 0 ? mobsPerPoint : 1) * 20;
+
+                            while (spawnedAtThisPoint < mobsPerPoint && attempts < limitAttempts) {
+                                attempts++;
+                                Location loc = stage.getSpawnLocationAt(i, spawnRadius);
+                                if (loc != null) {
+                                    UUID mobId = plugin.getMythicMobsIntegration().spawnMobAtLocation(mobType, loc);
+                                    if (mobId != null) {
+                                        aliveMobs.add(mobId);
+                                        totalMobCount++;
+                                        spawnedAtThisPoint++;
+                                        spawnedTotal++;
+                                    }
+                                }
+                            }
+                            if (spawnedAtThisPoint == 0 && mobsPerPoint > 0) {
+                                plugin.getLogger().warning("[DemonTower] Spawn Point Index " + i + " failed to spawn any mobs! Check coordinates.");
+                            }
+                        }
+                    }
+                }
+
+                int remaining = countNeeded - spawnedTotal;
+                int attempts = 0;
+                int maxAttempts = remaining * 50;
+
+                while (remaining > 0 && attempts < maxAttempts) {
                     attempts++;
                     UUID mobId = spawnMobAtRandomPoint(mobType, stage, spawnRadius);
                     if (mobId != null) {
                         aliveMobs.add(mobId);
                         totalMobCount++;
-                        spawned++;
-                    } else if (attempts > maxAttempts - count) {
-                        // FALLBACK: Jeśli pod koniec prób nadal brakuje mobów, spawnuj na środku (warp)
-                        // To gwarantuje, że liczba mobów ZAWSZE się zgodzi, nawet jak radius jest zły
+                        spawnedTotal++;
+                        remaining--;
+                    } else if (attempts > maxAttempts - remaining) {
                         UUID forcedMobId = mythicMobs.spawnMob(mobType, stage.getWarp());
                         if (forcedMobId != null) {
                             aliveMobs.add(forcedMobId);
                             totalMobCount++;
-                            spawned++;
+                            spawnedTotal++;
+                            remaining--;
                         }
                     }
                 }
 
-                if (spawned < count) {
-                    plugin.getLogger().severe("[DemonTower] CRITICAL: Failed to spawn correct mob amount! Requested: " + count + ", Spawned: " + spawned);
+                if (spawnedTotal < countNeeded) {
+                    plugin.getLogger().severe("[DemonTower] CRITICAL: Failed to spawn correct mob amount! Requested: " + countNeeded + ", Spawned: " + spawnedTotal);
                 }
             }
         }
@@ -454,9 +506,12 @@ public class DemonTowerSession {
     }
 
     public void onMobKilled(UUID mobId) {
+        // Ważne: remove(mobId) zwróci true tylko jeśli mob był na liście aliveMobs
+        // Dzięki temu nie zliczamy przypadkowych zabójstw
         if (aliveMobs.remove(mobId)) {
             if (plugin.getConfigManager().isDebugMode()) {
                 debugKillCount++;
+                broadcastMessage("&7[DEBUG] Kill registered: " + debugKillCount + "/5");
                 checkDebugStageComplete(mobId);
             } else {
                 checkStageComplete();
@@ -495,8 +550,7 @@ public class DemonTowerSession {
             plugin.getLogger().info("[DemonTowerSession DEBUG] onItemCollected called with amount=" + amount);
         }
 
-        // RESETUJEMY licznik pecha po udanym dropie
-        killsSinceLastDrop = 0;
+        killsSinceLastDrop = 0; // Reset licznika dropu
 
         FloorConfig floor = plugin.getConfigManager().getFloor(currentFloor);
         if (floor == null) return;
@@ -551,7 +605,6 @@ public class DemonTowerSession {
                 int mobsAlive = aliveMobs.size();
                 int itemsNeeded = stage.getCollectAmount() - collectedItems;
 
-                // Fallback: jeśli nadal brakuje mobów (mimo poprawek), respawnuj je
                 if (mobsAlive < itemsNeeded && mobsAlive == 0) {
                     broadcastMessage("&e&l[!] &7Respawning mobs to allow collection...");
                     spawnMobs(stage);
@@ -590,10 +643,6 @@ public class DemonTowerSession {
             }
         }
     }
-
-    // ... [Reszta metod bez zmian: startStageWaitTimer, advanceToNextStage, completeFloor itp.] ...
-    // Zachowaj je z poprzednich wersji pliku.
-    // Poniżej wklejam resztę dla kompletności, by plik był spójny:
 
     private void startStageWaitTimer() {
         stageWaitTask = new BukkitRunnable() {
@@ -821,6 +870,10 @@ public class DemonTowerSession {
     private void stopAllTimers() {
         stopTimer();
         stopMechanicTimeout();
+        if (sanityTask != null && !sanityTask.isCancelled()) {
+            sanityTask.cancel();
+            sanityTask = null;
+        }
         if (countdownTask != null && !countdownTask.isCancelled()) {
             countdownTask.cancel();
             countdownTask = null;
@@ -871,24 +924,75 @@ public class DemonTowerSession {
         return onlinePlayers;
     }
 
-    // Gettery i settery bez zmian...
-    public Set<UUID> getPlayers() { return Collections.unmodifiableSet(players); }
-    public UUID getPartyLeader() { return partyLeader; }
-    public String getPartyLeaderName() { if (partyLeader == null) return "Unknown"; Player leader = plugin.getServer().getPlayer(partyLeader); return leader != null ? leader.getName() : "Unknown"; }
-    public int getCurrentFloor() { return currentFloor; }
-    public int getCurrentStage() { return currentStage; }
-    public SessionState getState() { return state; }
-    public int getTimeRemaining() { return timeRemaining; }
-    public boolean hasPlayer(Player player) { return players.contains(player.getUniqueId()); }
-    public boolean isActive() { return state == SessionState.ACTIVE || state == SessionState.BOSS || state == SessionState.COLLECTING; }
-    public boolean isFloorCompleted() { return state == SessionState.FLOOR_COMPLETED; }
-    public boolean isFloorTransitionInProgress() { return state == SessionState.FLOOR_TRANSITION; }
-    public boolean canUseMechanics() { return state == SessionState.FLOOR_COMPLETED || state == SessionState.FLOOR_TRANSITION; }
-    public int getFloorTransitionRemaining() { return floorTransitionRemaining; }
-    public boolean canJoin() { return state == SessionState.WAITING; }
-    public int getPlayerCount() { return players.size(); }
-    public Set<UUID> getAliveMobs() { return Collections.unmodifiableSet(aliveMobs); }
-    public int getTotalMobCount() { return totalMobCount; }
+    public Set<UUID> getPlayers() {
+        return Collections.unmodifiableSet(players);
+    }
+
+    public UUID getPartyLeader() {
+        return partyLeader;
+    }
+
+    public String getPartyLeaderName() {
+        if (partyLeader == null) return "Unknown";
+        Player leader = plugin.getServer().getPlayer(partyLeader);
+        return leader != null ? leader.getName() : "Unknown";
+    }
+
+    public int getCurrentFloor() {
+        return currentFloor;
+    }
+
+    public int getCurrentStage() {
+        return currentStage;
+    }
+
+    public SessionState getState() {
+        return state;
+    }
+
+    public int getTimeRemaining() {
+        return timeRemaining;
+    }
+
+    public boolean hasPlayer(Player player) {
+        return players.contains(player.getUniqueId());
+    }
+
+    public boolean isActive() {
+        return state == SessionState.ACTIVE || state == SessionState.BOSS || state == SessionState.COLLECTING;
+    }
+
+    public boolean isFloorCompleted() {
+        return state == SessionState.FLOOR_COMPLETED;
+    }
+
+    public boolean isFloorTransitionInProgress() {
+        return state == SessionState.FLOOR_TRANSITION;
+    }
+
+    public boolean canUseMechanics() {
+        return state == SessionState.FLOOR_COMPLETED || state == SessionState.FLOOR_TRANSITION;
+    }
+
+    public int getFloorTransitionRemaining() {
+        return floorTransitionRemaining;
+    }
+
+    public boolean canJoin() {
+        return state == SessionState.WAITING;
+    }
+
+    public int getPlayerCount() {
+        return players.size();
+    }
+
+    public Set<UUID> getAliveMobs() {
+        return Collections.unmodifiableSet(aliveMobs);
+    }
+
+    public int getTotalMobCount() {
+        return totalMobCount;
+    }
 
     public void startWave() {
         if (state != SessionState.WAITING) return;
