@@ -56,7 +56,8 @@ public class MythicMobsIntegration {
     }
 
     public UUID spawnMobAtLocation(String mobType, Location location) {
-        return spawnMobAtLocation(mobType, location, true);
+        // FIX: Zmieniono na FALSE, aby uniknąć podwójnego losowania pozycji (config radius + ten hardcoded offset)
+        return spawnMobAtLocation(mobType, location, false);
     }
 
     /**

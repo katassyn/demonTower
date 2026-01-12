@@ -25,22 +25,22 @@ public class ItemManipulator {
 
     // All possible stats that can be on items (except Protection which is protected)
     private static final List<StatDefinition> ALL_STATS = Arrays.asList(
-        new StatDefinition("Damage", "&7Damage:&c +%d", "⚔", false),
-        new StatDefinition("HP", "&7HP:&c +%d", "❤", false),
-        new StatDefinition("Health", "&7Health:&c +%d", "❤", false),
-        new StatDefinition("Luck", "&7Luck:&a +%.1f", "🍀", true),
-        new StatDefinition("Speed", "&7Speed:&b +%d", "👟", false),
-        new StatDefinition("Attack Speed", "&7Attack Speed:&e +%d%%", "⚡", true),
-        new StatDefinition("Thorns", "&7Thorns:&2 %d", "🌵", false),
-        new StatDefinition("Armor", "&7Armor:&b +%d", "🛡", false),
-        new StatDefinition("XP Boost", "&7XP Boost:&a +%d%%", "⭐", true),
-        new StatDefinition("Biologist Time", "&7Biologist Time:&d +%d%%", "🔬", true),
-        new StatDefinition("Evasion Chance", "&7Evasion Chance:&b +%d%%", "💨", true),
-        new StatDefinition("Critical Chance", "&7Critical Chance:&c +%d%%", "🎯", true),
-        new StatDefinition("Critical Damage", "&7Critical Damage:&c +%d%%", "💥", true),
-        new StatDefinition("Armor Penetration", "&7Armor Penetration:&4 +%d%%", "🗡", true),
-        new StatDefinition("Block Chance", "&7Block Chance:&b %d%%", "🎲", true),
-        new StatDefinition("Block Strength", "&7Block Strength:&a +%d%%", "⚙", true)
+            new StatDefinition("Damage", "&7Damage:&c +%d", "⚔", false),
+            new StatDefinition("HP", "&7HP:&c +%d", "❤", false),
+            new StatDefinition("Health", "&7Health:&c +%d", "❤", false),
+            new StatDefinition("Luck", "&7Luck:&a +%.1f", "🍀", true),
+            new StatDefinition("Speed", "&7Speed:&b +%d", "👟", false),
+            new StatDefinition("Attack Speed", "&7Attack Speed:&e +%d%%", "⚡", true),
+            new StatDefinition("Thorns", "&7Thorns:&2 %d", "🌵", false),
+            new StatDefinition("Armor", "&7Armor:&b +%d", "🛡", false),
+            new StatDefinition("XP Boost", "&7XP Boost:&a +%d%%", "⭐", true),
+            new StatDefinition("Biologist Time", "&7Biologist Time:&d +%d%%", "🔬", true),
+            new StatDefinition("Evasion Chance", "&7Evasion Chance:&b +%d%%", "💨", true),
+            new StatDefinition("Critical Chance", "&7Critical Chance:&c +%d%%", "🎯", true),
+            new StatDefinition("Critical Damage", "&7Critical Damage:&c +%d%%", "💥", true),
+            new StatDefinition("Armor Penetration", "&7Armor Penetration:&4 +%d%%", "🗡", true),
+            new StatDefinition("Block Chance", "&7Block Chance:&b %d%%", "🎲", true),
+            new StatDefinition("Block Strength", "&7Block Strength:&a +%d%%", "⚙", true)
     );
 
     // Stats that should not be modified by Corrupted Blacksmith
@@ -48,14 +48,14 @@ public class ItemManipulator {
 
     // Accessory materials
     private static final Set<Material> ACCESSORY_MATERIALS = Set.of(
-        Material.TNT_MINECART,        // Ring 1
-        Material.HOPPER_MINECART,     // Ring 2
-        Material.CHEST_MINECART,      // Necklace
-        Material.FURNACE_MINECART,    // Adornment
-        Material.WHITE_BANNER,        // Cloak
-        Material.IRON_DOOR,           // Shield
-        Material.MINECART,            // Belt
-        Material.LEATHER_HORSE_ARMOR  // Gloves
+            Material.TNT_MINECART,        // Ring 1
+            Material.HOPPER_MINECART,     // Ring 2
+            Material.CHEST_MINECART,      // Necklace
+            Material.FURNACE_MINECART,    // Adornment
+            Material.WHITE_BANNER,        // Cloak
+            Material.IRON_DOOR,           // Shield
+            Material.MINECART,            // Belt
+            Material.LEATHER_HORSE_ARMOR  // Gloves
     );
 
     public ItemManipulator(DemonTowerPlugin plugin) {
@@ -161,7 +161,7 @@ public class ItemManipulator {
         // Add state tag at the very beginning (first line, no extra empty lines)
         // Use decoration(false) to prevent default italic styling
         Component stateComponent = LEGACY.deserialize(state.getTag())
-            .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
+                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
         lore.add(0, stateComponent);
 
         meta.lore(lore);
@@ -234,7 +234,7 @@ public class ItemManipulator {
 
         // Convert back to Component using same serializer, and remove italics
         Component modifiedComponent = LEGACY_SECTION.deserialize(modifiedLine)
-            .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
+                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
         lore.set(targetIdx, modifiedComponent);
         meta.lore(lore);
         result.setItemMeta(meta);
@@ -412,7 +412,7 @@ public class ItemManipulator {
 
             // Convert back to Component and remove italics
             Component modifiedComponent = LEGACY_SECTION.deserialize(modifiedLine)
-                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
+                    .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
             lore.set(idx, modifiedComponent);
         }
 
@@ -472,7 +472,7 @@ public class ItemManipulator {
 
         // Add Smelted tag (first line, no extra empty lines, no italics)
         Component smeltedTag = LEGACY.deserialize("&6Smelted")
-            .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
+                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
         newLore.add(smeltedTag);
 
         // Add merged stats (no italics)
@@ -480,7 +480,7 @@ public class ItemManipulator {
             String statLine = formatStatLine(entry.getKey(), entry.getValue());
             if (statLine != null) {
                 Component statComponent = LEGACY.deserialize(statLine)
-                    .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
+                        .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
                 newLore.add(statComponent);
             }
         }
@@ -492,7 +492,7 @@ public class ItemManipulator {
                 String text = PlainTextComponentSerializer.plainText().serialize(line);
                 // Skip stat lines (already handled) and empty lines at start
                 if (!isStatLine(text) && (text.contains("Rarity") || text.contains("Set:") ||
-                    text.contains("━") || text.contains("Level") || text.contains("Required"))) {
+                        text.contains("━") || text.contains("Level") || text.contains("Required"))) {
                     newLore.add(line);
                 }
             }
@@ -547,15 +547,16 @@ public class ItemManipulator {
 
         List<Component> lore = new ArrayList<>(meta.lore());
 
-        // Use logic similar to fuseToUltimate below
         List<Component> newLore = new ArrayList<>();
 
         for (Component comp : lore) {
             String text = PlainTextComponentSerializer.plainText().serialize(comp);
+            String lower = text.toLowerCase();
 
-            // FIX: Skip non-stat lines explicitly to prevent "Required Level" bug
-            if (text.contains("Rarity") || text.contains("Level") || text.contains("Set:") ||
-                text.contains("---") || text.contains("Class") || text.contains("Soulbound")) {
+            // FIX: Case-insensitive check to skip "Required Level", "Rarity", etc.
+            if (lower.contains("rarity") || lower.contains("level") || lower.contains("set:") ||
+                    lower.contains("---") || lower.contains("class") || lower.contains("soulbound") ||
+                    lower.contains("wymagany") || lower.contains("poziom") || lower.contains("req") || lower.contains("lvl")) {
                 newLore.add(comp);
                 continue;
             }
@@ -564,7 +565,7 @@ public class ItemManipulator {
             String modified = modifyStatValue(line, 2.0);
 
             Component modComp = LegacyComponentSerializer.legacySection().deserialize(modified)
-                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
+                    .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
             newLore.add(modComp);
         }
 
@@ -605,8 +606,12 @@ public class ItemManipulator {
         debug("findStatLineIndices: Scanning " + lore.size() + " lore lines");
         for (int i = 0; i < lore.size(); i++) {
             String text = PlainTextComponentSerializer.plainText().serialize(lore.get(i));
+            String lower = text.toLowerCase();
             boolean matches = statPattern.matcher(text).find();
-            boolean excluded = text.contains("Rarity") || text.contains("Level") || text.contains("Set:");
+
+            // FIX: Case-insensitive exclusions
+            boolean excluded = lower.contains("rarity") || lower.contains("level") || lower.contains("set:") ||
+                    lower.contains("wymagany") || lower.contains("poziom") || lower.contains("req") || lower.contains("lvl");
 
             if (matches && !excluded) {
                 debug("  [" + i + "] STAT LINE: '" + text + "'");
@@ -631,7 +636,7 @@ public class ItemManipulator {
 
     /**
      * Helper: Modifies a stat value in a string by a multiplier.
-     * FIX: Uses find() instead of matches() to handle complex formatting/colors/icons.
+     * FIX: Uses lookbehind to ignore numbers inside color codes (e.g. §9).
      */
     private String modifyStatValue(String line, double multiplier) {
         debug("=== modifyStatValue START ===");
@@ -646,11 +651,9 @@ public class ItemManipulator {
         String beforeColon = line.substring(0, colonIdx + 1);
         String afterColon = line.substring(colonIdx + 1);
 
-        // FIX: Relaxed regex. Finds the first number sequence.
-        // Group 1: Optional +
-        // Group 2: The number (int or decimal)
-        // Group 3: Optional % signs
-        Pattern numberPattern = Pattern.compile("(\\+?)(\\d+(?:\\.\\d+)?)(%{0,2})");
+        // FIX: Regex with negative lookbehind (?<![§&]) to avoid matching color codes
+        // It matches a number ONLY if it is NOT preceded by § or &
+        Pattern numberPattern = Pattern.compile("(?<![§&])(\\+?)(\\d+(?:\\.\\d+)?)(%{0,2})");
         Matcher matcher = numberPattern.matcher(afterColon);
 
         if (matcher.find()) {
@@ -714,8 +717,8 @@ public class ItemManipulator {
         boolean item2Accessory = isAccessory(item2);
 
         return (item1Weapon && item2Weapon) ||
-               (item1Armor && item2Armor) ||
-               (item1Accessory && item2Accessory);
+                (item1Armor && item2Armor) ||
+                (item1Accessory && item2Accessory);
     }
 
     /**
@@ -725,8 +728,8 @@ public class ItemManipulator {
         if (item == null) return false;
         String typeName = item.getType().name();
         return typeName.contains("SWORD") || typeName.contains("AXE") ||
-               typeName.contains("BOW") || typeName.contains("CROSSBOW") ||
-               typeName.contains("TRIDENT");
+                typeName.contains("BOW") || typeName.contains("CROSSBOW") ||
+                typeName.contains("TRIDENT");
     }
 
     /**
@@ -736,8 +739,8 @@ public class ItemManipulator {
         if (item == null) return false;
         String typeName = item.getType().name();
         return typeName.contains("HELMET") || typeName.contains("CHESTPLATE") ||
-               typeName.contains("LEGGINGS") || typeName.contains("BOOTS") ||
-               typeName.contains("CAP");
+                typeName.contains("LEGGINGS") || typeName.contains("BOOTS") ||
+                typeName.contains("CAP");
     }
 
     /**
@@ -764,10 +767,12 @@ public class ItemManipulator {
         for (Component comp : lore) {
             // Check plain text for exclusions
             String text = PlainTextComponentSerializer.plainText().serialize(comp);
+            String lower = text.toLowerCase();
 
-            // FIX: Explicitly skip "Level", "Rarity", etc so they aren't doubled
-            if (text.contains("Rarity") || text.contains("Level") || text.contains("Set:") ||
-                text.contains("---") || text.contains("Sanctified") || text.contains("ULTIMATE")) {
+            // FIX: Explicitly skip "Level", "Rarity", etc so they aren't doubled (CASE INSENSITIVE)
+            if (lower.contains("rarity") || lower.contains("level") || lower.contains("set:") ||
+                    lower.contains("---") || lower.contains("sanctified") || lower.contains("ultimate") ||
+                    lower.contains("wymagany") || lower.contains("poziom") || lower.contains("req") || lower.contains("lvl")) {
                 newLore.add(comp);
                 continue;
             }
@@ -780,13 +785,13 @@ public class ItemManipulator {
             debug("  Modified: '" + modified + "'");
 
             Component modComp = LegacyComponentSerializer.legacySection().deserialize(modified)
-                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
+                    .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
             newLore.add(modComp);
         }
 
         // Add ULTIMATE marker at top (first line, no italics)
         Component ultimateTag = LEGACY.deserialize("&5&l✦ ULTIMATE ✦")
-            .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
+                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
         newLore.add(0, ultimateTag);
 
         meta.lore(newLore);
