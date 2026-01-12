@@ -546,29 +546,29 @@ public class ItemManipulator {
         }
 
         List<Component> lore = new ArrayList<>(meta.lore());
-        debug("Found " + lore.size() + " lore lines");
-        for (int i = 0; i < lore.size(); i++) {
-            debug("  Lore[" + i + "]: '" + PlainTextComponentSerializer.plainText().serialize(lore.get(i)) + "'");
-        }
 
-        List<Integer> statIndices = findStatLineIndices(lore);
-        debug("Found " + statIndices.size() + " stat line indices: " + statIndices);
+        // Use logic similar to fuseToUltimate below
+        List<Component> newLore = new ArrayList<>();
 
-        for (int idx : statIndices) {
-            String originalLine = LEGACY_SECTION.serialize(lore.get(idx));
-            debug("Processing stat at index " + idx + " with multiplier 2.0");
-            debug("  Original: '" + originalLine + "'");
+        for (Component comp : lore) {
+            String text = PlainTextComponentSerializer.plainText().serialize(comp);
 
-            String modifiedLine = modifyStatValue(originalLine, 2.0);
-            debug("  Modified: '" + modifiedLine + "'");
+            // FIX: Skip non-stat lines explicitly to prevent "Required Level" bug
+            if (text.contains("Rarity") || text.contains("Level") || text.contains("Set:") ||
+                text.contains("---") || text.contains("Class") || text.contains("Soulbound")) {
+                newLore.add(comp);
+                continue;
+            }
 
-            // Convert back and remove italics
-            Component modifiedComponent = LEGACY_SECTION.deserialize(modifiedLine)
+            String line = LegacyComponentSerializer.legacySection().serialize(comp);
+            String modified = modifyStatValue(line, 2.0);
+
+            Component modComp = LegacyComponentSerializer.legacySection().deserialize(modified)
                 .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
-            lore.set(idx, modifiedComponent);
+            newLore.add(modComp);
         }
 
-        meta.lore(lore);
+        meta.lore(newLore);
         result.setItemMeta(meta);
 
         debug("=== fuseItems END ===");
@@ -629,50 +629,41 @@ public class ItemManipulator {
         return lore.size();
     }
 
+    /**
+     * Helper: Modifies a stat value in a string by a multiplier.
+     * FIX: Uses find() instead of matches() to handle complex formatting/colors/icons.
+     */
     private String modifyStatValue(String line, double multiplier) {
         debug("=== modifyStatValue START ===");
-        debug("Input line: '" + line + "'");
-        debug("Multiplier: " + multiplier);
+        debug("Input: '" + line + "', Mult: " + multiplier);
 
-        // Simpler approach: find any number that appears after a colon
-        // Handle formats like: "§7Damage:§c +150" or "Damage: +150" or "Critical Chance: +5%"
-
-        // First, check if this line contains a colon (stat format)
+        // Check for colon (stat indicator)
         int colonIdx = line.indexOf(':');
         if (colonIdx == -1) {
-            debug("No colon found in line, returning unchanged");
             return line;
         }
 
-        // Find the number after the colon
-        // Pattern: find digits (with optional decimal) possibly preceded by + and followed by %
+        String beforeColon = line.substring(0, colonIdx + 1);
         String afterColon = line.substring(colonIdx + 1);
-        debug("After colon: '" + afterColon + "'");
 
-        // Pattern: (anything before number)(optional +)(number with optional decimal)(0-2 percent signs)(rest)
-        // Changed from (%%?) to (%{0,2}) to make % fully optional (stats like "Health: +25" have no %)
-        Pattern numberPattern = Pattern.compile("(.*?)(\\+?)(\\d+(?:\\.\\d+)?)(%{0,2})(.*)");
+        // FIX: Relaxed regex. Finds the first number sequence.
+        // Group 1: Optional +
+        // Group 2: The number (int or decimal)
+        // Group 3: Optional % signs
+        Pattern numberPattern = Pattern.compile("(\\+?)(\\d+(?:\\.\\d+)?)(%{0,2})");
         Matcher matcher = numberPattern.matcher(afterColon);
 
-        if (matcher.matches()) {
-            String beforeNum = matcher.group(1);   // color codes, spaces before number
-            String plusSign = matcher.group(2);    // optional +
-            String numberStr = matcher.group(3);   // the number
-            String percentSign = matcher.group(4); // 0, 1, or 2 percent signs
-            String afterNum = matcher.group(5);    // anything after (icons, etc.)
-
-            debug("Regex matched!");
-            debug("  beforeNum: '" + beforeNum + "'");
-            debug("  plusSign: '" + plusSign + "'");
-            debug("  numberStr: '" + numberStr + "'");
-            debug("  percentSign: '" + percentSign + "'");
-            debug("  afterNum: '" + afterNum + "'");
+        if (matcher.find()) {
+            // We found a number in the part after the colon!
+            String prefix = afterColon.substring(0, matcher.start()); // Color codes, spaces before number
+            String plusSign = matcher.group(1);
+            String numberStr = matcher.group(2);
+            String percentSign = matcher.group(3);
+            String suffix = afterColon.substring(matcher.end()); // Icons, colors after number
 
             try {
                 double value = Double.parseDouble(numberStr);
                 double newValue = value * multiplier;
-
-                debug("Parsed value: " + value + " -> New value: " + newValue);
 
                 String newNumber;
                 if (newValue == Math.floor(newValue)) {
@@ -681,19 +672,14 @@ public class ItemManipulator {
                     newNumber = String.format(Locale.US, "%.1f", newValue);
                 }
 
-                // Reconstruct the line
-                String result = line.substring(0, colonIdx + 1) + beforeNum + plusSign + newNumber + percentSign + afterNum;
-                debug("Result line: '" + result + "'");
-                debug("=== modifyStatValue END (success) ===");
+                // Reconstruct the line preserving all surrounding text/colors
+                String result = beforeColon + prefix + plusSign + newNumber + percentSign + suffix;
+                debug("Result: '" + result + "'");
                 return result;
+
             } catch (NumberFormatException e) {
-                debug("NumberFormatException: " + e.getMessage());
-                debug("=== modifyStatValue END (parse error) ===");
                 return line;
             }
-        } else {
-            debug("Regex did NOT match afterColon: '" + afterColon + "'");
-            debug("=== modifyStatValue END (no match) ===");
         }
 
         return line;
@@ -765,48 +751,31 @@ public class ItemManipulator {
         ItemStack result = item1.clone();
         ItemMeta meta = result.getItemMeta();
         if (meta == null) {
-            debug("No meta - returning item as-is");
             return result;
         }
 
         List<Component> lore = meta.lore();
         if (lore == null) lore = new ArrayList<>();
 
-        debug("Found " + lore.size() + " lore lines in base item");
-        for (int i = 0; i < lore.size(); i++) {
-            debug("  Lore[" + i + "]: '" + PlainTextComponentSerializer.plainText().serialize(lore.get(i)) + "'");
-        }
-
-        // Get stats from item2 and add them
-        ItemMeta meta2 = item2.getItemMeta();
-        if (meta2 != null && meta2.lore() != null) {
-            debug("Item2 has " + meta2.lore().size() + " lore lines");
-            for (Component comp : meta2.lore()) {
-                String line = PlainTextComponentSerializer.plainText().serialize(comp);
-                // Skip non-stat lines
-                if (line.isEmpty() || line.contains("---") || line.contains("Rarity") ||
-                    line.contains("SANCTIFIED") || line.contains("SMELTED") ||
-                    line.contains("CORRUPTED") || line.contains("ULTIMATE")) {
-                    continue;
-                }
-                // Find matching stat in item1 and add values
-                // For simplicity, just append item2 stats (in real implementation, merge them)
-            }
-        }
-
         // Double all stat values
         List<Component> newLore = new ArrayList<>();
         debug("Processing lore lines for stat doubling...");
+
         for (Component comp : lore) {
+            // Check plain text for exclusions
+            String text = PlainTextComponentSerializer.plainText().serialize(comp);
+
+            // FIX: Explicitly skip "Level", "Rarity", etc so they aren't doubled
+            if (text.contains("Rarity") || text.contains("Level") || text.contains("Set:") ||
+                text.contains("---") || text.contains("Sanctified") || text.contains("ULTIMATE")) {
+                newLore.add(comp);
+                continue;
+            }
+
             String line = LegacyComponentSerializer.legacySection().serialize(comp);
             debug("Processing line: '" + line + "'");
 
-            // Skip state markers (Sanctified tag)
-            if (line.contains("Sanctified")) {
-                debug("  Skipping Sanctified tag line");
-                continue;
-            }
-            // Double stat values
+            // Double stat values using the fixed regex logic
             String modified = modifyStatValue(line, 2.0);
             debug("  Modified: '" + modified + "'");
 
@@ -821,16 +790,12 @@ public class ItemManipulator {
         newLore.add(0, ultimateTag);
 
         meta.lore(newLore);
-        debug("Final lore has " + newLore.size() + " lines");
 
-        // Update display name with ULTIMATE prefix, preserving original colors
+        // Update display name with ULTIMATE prefix
         Component displayName = meta.displayName();
         if (displayName != null) {
-            // Use legacySection to preserve color codes from the original name
             String nameWithColors = LEGACY_SECTION.serialize(displayName);
-            // Prepend ULTIMATE prefix (§5§l[ULTIMATE] §r) and then the original colored name
             meta.displayName(LEGACY_SECTION.deserialize("§5§l[ULTIMATE] §r" + nameWithColors));
-            debug("Updated display name to: [ULTIMATE] " + nameWithColors);
         }
 
         result.setItemMeta(meta);

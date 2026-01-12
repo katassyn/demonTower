@@ -2,17 +2,15 @@ package pl.yourserver.demonTowerPlugin.listeners;
 
 import io.lumine.mythic.bukkit.events.MythicMobDeathEvent;
 import org.bukkit.entity.Entity;
-import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDeathEvent;
-import org.bukkit.event.entity.EntityPickupItemEvent;
-import org.bukkit.inventory.ItemStack;
 import pl.yourserver.demonTowerPlugin.DemonTowerPlugin;
 import pl.yourserver.demonTowerPlugin.config.FloorConfig;
 import pl.yourserver.demonTowerPlugin.config.StageConfig;
 import pl.yourserver.demonTowerPlugin.game.DemonTowerSession;
+import pl.yourserver.demonTowerPlugin.game.SessionState;
 import pl.yourserver.demonTowerPlugin.game.StageType;
 
 import java.util.UUID;
@@ -41,7 +39,11 @@ public class MobDeathListener implements Listener {
 
         DemonTowerSession session = plugin.getSessionManager().getCurrentSession();
         if (session != null && session.getAliveMobs().contains(mobId)) {
-            debug("  -> Mob is tracked, calling onMobKilled");
+            debug("  -> Mob is tracked, calling handleVirtualCollect then onMobKilled");
+
+            // Obsługa wirtualnego dropu (zaliczenie przedmiotu bez fizycznego spawnowania)
+            handleVirtualCollect(session);
+
             session.onMobKilled(mobId);
         } else {
             debug("  -> Mob is NOT tracked (session=" + (session != null) + ", inAliveMobs=" + (session != null && session.getAliveMobs().contains(mobId)) + ")");
@@ -62,23 +64,23 @@ public class MobDeathListener implements Listener {
 
         DemonTowerSession session = plugin.getSessionManager().getCurrentSession();
         if (session != null && session.getAliveMobs().contains(mobId)) {
-            // MythicMobDeathEvent should handle this, but as fallback
-            debug("  -> Mob is tracked, calling onMobKilled (fallback)");
+            debug("  -> Mob is tracked, calling handleVirtualCollect then onMobKilled (fallback)");
+
+            // Obsługa wirtualnego dropu
+            handleVirtualCollect(session);
+
             session.onMobKilled(mobId);
         }
     }
 
-    @EventHandler(priority = EventPriority.NORMAL)
-    public void onItemPickup(EntityPickupItemEvent event) {
-        if (!(event.getEntity() instanceof Player)) return;
-
-        Player player = (Player) event.getEntity();
-
-        // Check if player is in a collect stage
-        if (!plugin.getSessionManager().isPlayerInSession(player)) return;
-
-        DemonTowerSession session = plugin.getSessionManager().getCurrentSession();
-        if (session == null) return;
+    /**
+     * Wirtualny system dropu:
+     * Oblicza szansę na "drop" na podstawie brakujących przedmiotów i żywych mobów.
+     * Gwarantuje 100% zdobycia wymaganej liczby przedmiotów.
+     * Nie spawnuje fizycznego przedmiotu, tylko od razu zalicza postęp.
+     */
+    private void handleVirtualCollect(DemonTowerSession session) {
+        if (session.getState() != SessionState.COLLECTING) return;
 
         FloorConfig floor = plugin.getConfigManager().getFloor(session.getCurrentFloor());
         if (floor == null) return;
@@ -86,22 +88,27 @@ public class MobDeathListener implements Listener {
         StageConfig stage = floor.getStage(session.getCurrentStage());
         if (stage == null || stage.getType() != StageType.COLLECT) return;
 
-        // Check if picked up item is the collect item
-        ItemStack item = event.getItem().getItemStack();
-        String collectItem = stage.getCollectItem();
+        int required = stage.getCollectAmount();
+        int collected = session.getCollectedItems();
 
-        debug("ItemPickup: player=" + player.getName() + ", itemType=" + item.getType() + ", amount=" + item.getAmount());
-        debug("  collectItem configured=" + collectItem);
+        // Mob, który właśnie umiera, wciąż jest na liście aliveMobs w tym momencie
+        int mobsAlive = session.getAliveMobs().size();
 
-        if (collectItem != null) {
-            boolean isMythicItem = plugin.getMythicMobsIntegration().isMythicItem(item, collectItem);
-            debug("  isMythicItem=" + isMythicItem);
+        if (collected >= required) return; // Już zebrano wystarczająco
 
-            if (isMythicItem) {
-                int amount = item.getAmount();
-                debug("  -> Collecting " + amount + " items");
-                session.onItemCollected(amount);
-            }
+        // Oblicz szansę: (Ile brakuje / Ile mobów zostało)
+        // Jeśli brakuje 1 przedmiotu i został 1 mob -> szansa 100%
+        // Jeśli brakuje 5 przedmiotów i jest 10 mobów -> szansa 50%
+        double chance = (double) (required - collected) / (double) mobsAlive;
+
+        debug("Virtual Drop Calc: need=" + (required - collected) + ", mobs=" + mobsAlive + ", chance=" + String.format("%.2f", chance));
+
+        if (Math.random() < chance) {
+            // Sukces - zaliczamy przedmiot wirtualnie
+            debug("  -> VIRTUAL DROP SUCCESS! Adding +1 to collected items.");
+            session.onItemCollected(1);
+        } else {
+            debug("  -> Virtual drop failed (RNG).");
         }
     }
 }

@@ -544,6 +544,10 @@ public class DemonTowerSession {
         }
     }
 
+    public int getCollectedItems() {
+        return collectedItems;
+    }
+
     public void onItemCollected(int amount) {
         if (plugin.getConfigManager().isDebugMode()) {
             plugin.getLogger().info("[DemonTowerSession DEBUG] onItemCollected called with amount=" + amount);
@@ -569,6 +573,9 @@ public class DemonTowerSession {
         if (plugin.getConfigManager().isDebugMode()) {
             plugin.getLogger().info("[DemonTowerSession DEBUG] Collected items: " + collectedItems + "/" + stage.getCollectAmount());
         }
+
+        // ZMIANA: Dodano wiadomość na czacie (cyferki)
+        broadcastMessage("&e[DT] &7Collected item: &a" + collectedItems + "&7/&a" + stage.getCollectAmount());
 
         broadcastActionBar(plugin.getConfigManager().getMessage("collect_progress",
             "current", collectedItems, "required", stage.getCollectAmount()));
@@ -814,6 +821,18 @@ public class DemonTowerSession {
             return false;
         }
 
+        // FIX: Remove keys IMMEDIATELY when transition is initiated (not after 60s)
+        // This prevents players from hiding/giving keys for free passage
+        FloorConfig nextFloor = plugin.getConfigManager().getFloor(currentFloor + 1);
+        if (nextFloor != null && nextFloor.requiresKey()) {
+            for (UUID playerId : players) {
+                Player player = plugin.getServer().getPlayer(playerId);
+                if (player != null) {
+                    plugin.getMythicMobsIntegration().removeItem(player, nextFloor.getRequiredKey(), 1);
+                }
+            }
+        }
+
         floorTransitionInitiated = true;
         state = SessionState.FLOOR_TRANSITION;
         floorTransitionRemaining = FLOOR_TRANSITION_TIME;
@@ -877,15 +896,8 @@ public class DemonTowerSession {
             return;
         }
 
-        // Remove keys from all players
-        if (nextFloor.requiresKey()) {
-            for (UUID playerId : players) {
-                Player player = plugin.getServer().getPlayer(playerId);
-                if (player != null) {
-                    plugin.getMythicMobsIntegration().removeItem(player, nextFloor.getRequiredKey(), 1);
-                }
-            }
-        }
+        // Keys are now removed in initiateFloorTransition() immediately
+        // No longer need to remove keys here (after 60s delay)
 
         currentFloor++;
         currentStage = 1;
