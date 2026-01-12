@@ -7,7 +7,11 @@
       "Bash(\"C:\\\\Program Files\\\\JetBrains\\\\IntelliJ IDEA 2025.1.2\\\\plugins\\\\maven\\\\lib\\\\maven3\\\\bin\\\\mvn.cmd\" -v)",
       "Bash(\"C:\\\\Program Files\\\\JetBrains\\\\IntelliJ IDEA 2025.1.2\\\\plugins\\\\maven\\\\lib\\\\maven3\\\\bin\\\\mvn.cmd\" compile)",
       "Bash(rm:*)",
-      "Bash(\"C:\\\\Program Files\\\\JetBrains\\\\IntelliJ IDEA 2025.1.2\\\\plugins\\\\maven\\\\lib\\\\maven3\\\\bin\\\\mvn.cmd\" compile -f \"C:\\\\Users\\\\mastu\\\\IdeaProjects\\\\demonTowerPlugin\\\\pom.xml\")"
+      "Bash(\"C:\\\\Program Files\\\\JetBrains\\\\IntelliJ IDEA 2025.1.2\\\\plugins\\\\maven\\\\lib\\\\maven3\\\\bin\\\\mvn.cmd\" compile -f \"C:\\\\Users\\\\mastu\\\\IdeaProjects\\\\demonTowerPlugin\\\\pom.xml\")",
+      "Bash(powershell -Command \"cd ''C:\\\\Users\\\\mastu\\\\IdeaProjects\\\\demonTowerPlugin'' && mvn compile -q\")",
+      "Bash(powershell -Command \"cd ''C:\\\\Users\\\\mastu\\\\IdeaProjects\\\\demonTowerPlugin''; mvn compile -q\")",
+      "Bash(./gradlew build:*)",
+      "Bash(gradlew.bat build:*)"
     ]
   }
 }

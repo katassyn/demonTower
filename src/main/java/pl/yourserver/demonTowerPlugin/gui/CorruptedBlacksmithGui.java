@@ -28,21 +28,21 @@ public class CorruptedBlacksmithGui {
 
     // Slot positions
     public static final int SLOT_INPUT = 20;           // Item to corrupt
-    public static final int SLOT_PREVIEW = 24;         // Preview of result
-    public static final int SLOT_CONFIRM = 38;         // Confirm button
-    public static final int SLOT_REROLL = 40;          // Reroll button (if has stone)
-    public static final int SLOT_CANCEL = 42;          // Cancel button
+    public static final int SLOT_PROCEED = 24;         // Proceed button (roll and apply immediately)
+    public static final int SLOT_REROLL_STONE = 40;    // Info about reroll stone
     public static final int SLOT_INFO = 4;             // Info display
 
     // State
     private ItemStack inputItem = null;
-    private ItemStack previewItem = null;
-    private int corruptionType = -1;                   // 0-3 for the 4 outcomes
+    private ItemStack originalItemForReroll = null;  // Original item stored for reroll
+    private ItemStack resultItem = null;              // Result item in reroll state
     private boolean hasRerolled = false;
     private boolean hasSmithStone = false;
 
     // Cost
     public static final double COST = 1_000_000;       // 1m$
+    public static final String MATERIAL_ID = "blacksmith_scrap";
+    public static final int MATERIAL_AMOUNT = 10;
 
     public CorruptedBlacksmithGui(DemonTowerPlugin plugin, Player player) {
         this.plugin = plugin;
@@ -80,150 +80,131 @@ public class CorruptedBlacksmithGui {
             "&725% - Add a new stat",
             "&725% - Remove ALL stats!",
             "",
-            "&7Protection stat is never affected."));
+            "&7Protection stat is never affected.",
+            "",
+            "&eClick or drag item here"));
 
-        // Preview slot
-        inventory.setItem(SLOT_PREVIEW, createItem(Material.BARRIER, "&7&lNo Preview",
+        // Proceed button (disabled initially)
+        inventory.setItem(SLOT_PROCEED, createItem(Material.GRAY_CONCRETE, "&7&lWaiting for item...",
             "&7Place an item first."));
 
-        // Cancel button
-        inventory.setItem(SLOT_CANCEL, createItem(Material.RED_CONCRETE, "&c&lCancel",
-            "&7Close without changes."));
+        // Reroll stone info
+        updateRerollStoneInfo();
 
         player.openInventory(inventory);
     }
 
-    public void handleItemPlace(ItemStack item) {
+    /**
+     * Try to place an item in the GUI.
+     * @return true if item was accepted, false if rejected (item stays in player inventory)
+     */
+    public boolean handleItemPlace(ItemStack item) {
         ItemManipulator manipulator = plugin.getItemManipulator();
+
+        // Require unstacked item (amount = 1)
+        if (item.getAmount() > 1) {
+            player.sendMessage(LEGACY.deserialize("&c&lCorrupted Blacksmith: &7You must place a single item, not a stack! Unstack your items first."));
+            return false;
+        }
 
         // Check if item is already corrupted
         ItemState state = manipulator.getItemState(item);
         if (state == ItemState.CORRUPTED) {
             player.sendMessage(LEGACY.deserialize("&c&lCorrupted Blacksmith: &7This item is already CORRUPTED and cannot be modified!"));
-            returnItemToPlayer(item);
-            return;
+            return false;
         }
 
         // Check if item is ULTIMATE
         if (state == ItemState.ULTIMATE) {
             player.sendMessage(LEGACY.deserialize("&c&lCorrupted Blacksmith: &7ULTIMATE items cannot be corrupted!"));
-            returnItemToPlayer(item);
-            return;
+            return false;
         }
 
         inputItem = item;
         hasRerolled = false;
 
-        // Roll corruption
-        rollCorruption();
-
-        // Update GUI
+        // Update GUI - show proceed button
         updateGui();
-    }
-
-    private void rollCorruption() {
-        corruptionType = random.nextInt(4);
-        ItemManipulator manipulator = plugin.getItemManipulator();
-
-        switch (corruptionType) {
-            case 0: // Upgrade stat by 30%
-                previewItem = manipulator.upgradeRandomStat(inputItem, 0.30);
-                break;
-            case 1: // Remove random stat
-                previewItem = manipulator.removeRandomStat(inputItem);
-                break;
-            case 2: // Add new stat
-                previewItem = manipulator.addRandomStat(inputItem);
-                break;
-            case 3: // Remove ALL stats
-                previewItem = manipulator.removeAllStats(inputItem);
-                break;
-        }
+        return true;
     }
 
     private void updateGui() {
         // Show input item
         inventory.setItem(SLOT_INPUT, inputItem);
 
-        // Show preview with corruption type info
-        if (previewItem != null) {
-            ItemStack displayPreview = previewItem.clone();
-            ItemMeta meta = displayPreview.getItemMeta();
-            if (meta != null) {
-                List<Component> lore = meta.lore();
-                if (lore == null) lore = new ArrayList<>();
-                else lore = new ArrayList<>(lore);
-
-                lore.add(Component.empty());
-                lore.add(LEGACY.deserialize("&8━━━━━━━━━━━━━━━━"));
-                lore.add(LEGACY.deserialize("&7Corruption result:"));
-
-                switch (corruptionType) {
-                    case 0:
-                        lore.add(LEGACY.deserialize("&a+30% to a random stat!"));
-                        break;
-                    case 1:
-                        lore.add(LEGACY.deserialize("&eA stat was removed."));
-                        break;
-                    case 2:
-                        lore.add(LEGACY.deserialize("&bA new stat was added!"));
-                        break;
-                    case 3:
-                        lore.add(LEGACY.deserialize("&c&lALL stats removed!"));
-                        break;
-                }
-
-                meta.lore(lore);
-                displayPreview.setItemMeta(meta);
-            }
-            inventory.setItem(SLOT_PREVIEW, displayPreview);
-        }
-
-        // Check balance
+        // Check balance and materials
         boolean hasBalance = plugin.getVaultIntegration().hasBalance(player, COST);
+        boolean hasMaterials = plugin.getPouchIntegration().hasItem(player, MATERIAL_ID, MATERIAL_AMOUNT);
         String costDisplay = plugin.getVaultIntegration().formatCompact(COST);
+        int currentMaterials = plugin.getPouchIntegration().getItemAmount(player, MATERIAL_ID);
 
-        // Confirm button
-        if (hasBalance) {
-            inventory.setItem(SLOT_CONFIRM, createItem(Material.LIME_CONCRETE, "&a&lConfirm Corruption",
-                "&7Apply this corruption.",
+        // Proceed button - NO PREVIEW, just proceed
+        if (hasBalance && hasMaterials) {
+            inventory.setItem(SLOT_PROCEED, createItem(Material.LIME_CONCRETE, "&a&lCorrupt Item",
+                "&7Apply corruption immediately.",
+                "",
+                "&c&lWARNING: Result is RANDOM!",
+                "&7You will NOT see a preview.",
+                "&7The result is FINAL!",
                 "",
                 "&eCost: &c" + costDisplay,
+                "&eMaterial: &c" + MATERIAL_AMOUNT + "x &6Blacksmith Scrap",
+                "&7You have: &a" + currentMaterials,
                 "",
-                "&aClick to confirm!"));
+                "&aClick to corrupt!"));
         } else {
-            inventory.setItem(SLOT_CONFIRM, createItem(Material.GRAY_CONCRETE, "&c&lInsufficient Funds",
-                "&7You don't have enough money.",
-                "",
-                "&eCost: &c" + costDisplay,
-                "&7Your balance: &c" + plugin.getVaultIntegration().formatCompact(plugin.getVaultIntegration().getBalance(player))));
+            List<String> lore = new ArrayList<>();
+            lore.add("&7You're missing requirements:");
+            lore.add("");
+            if (!hasBalance) {
+                lore.add("&c✗ &7Money: &c" + costDisplay);
+            } else {
+                lore.add("&a✓ &7Money: &a" + costDisplay);
+            }
+            if (!hasMaterials) {
+                lore.add("&c✗ &7Material: &c" + MATERIAL_AMOUNT + "x &6Blacksmith Scrap");
+                lore.add("  &7You have: &c" + currentMaterials);
+            } else {
+                lore.add("&a✓ &7Material: &a" + MATERIAL_AMOUNT + "x &6Blacksmith Scrap");
+            }
+            inventory.setItem(SLOT_PROCEED, createItem(Material.GRAY_CONCRETE, "&c&lMissing Requirements",
+                lore.toArray(new String[0])));
         }
 
-        // Reroll button
-        if (!hasRerolled && hasSmithStone) {
-            inventory.setItem(SLOT_REROLL, createItem(Material.STONE, "&6&lReroll (Smith Stone)",
-                "&7Use your Corrupted Smithing Stone",
-                "&7to try a different corruption.",
+        updateRerollStoneInfo();
+    }
+
+    private void updateRerollStoneInfo() {
+        if (hasSmithStone && !hasRerolled) {
+            inventory.setItem(SLOT_REROLL_STONE, createItem(Material.STONE, "&6&lReroll Available!",
+                "&7You have a Corrupted Smithing Stone!",
                 "",
-                "&eYou have a smith_stone!",
+                "&7If you get a bad result,",
+                "&7you can use it to reroll ONCE.",
                 "",
-                "&6Click to reroll once!"));
+                "&eStone will be consumed on reroll."));
         } else if (hasRerolled) {
-            inventory.setItem(SLOT_REROLL, createItem(Material.BARRIER, "&c&lAlready Rerolled",
+            inventory.setItem(SLOT_REROLL_STONE, createItem(Material.BARRIER, "&c&lReroll Used",
                 "&7You already used your reroll."));
         } else {
-            inventory.setItem(SLOT_REROLL, createItem(Material.GRAY_STAINED_GLASS_PANE, "&7&lNo Reroll Available",
-                "&7You need a Corrupted Smithing Stone",
-                "&7to reroll the corruption result."));
+            inventory.setItem(SLOT_REROLL_STONE, createItem(Material.GRAY_STAINED_GLASS_PANE, "&7&lNo Reroll Stone",
+                "&7Get a Corrupted Smithing Stone",
+                "&7for a chance to reroll."));
         }
     }
 
-    public void handleConfirm() {
-        if (inputItem == null || previewItem == null) return;
+    public void handleProceed() {
+        if (inputItem == null) return;
 
         // Check balance
         if (!plugin.getVaultIntegration().hasBalance(player, COST)) {
             player.sendMessage(LEGACY.deserialize("&c&lCorrupted Blacksmith: &7You don't have enough money!"));
+            return;
+        }
+
+        // Check materials from pouch
+        if (!plugin.getPouchIntegration().hasItem(player, MATERIAL_ID, MATERIAL_AMOUNT)) {
+            player.sendMessage(LEGACY.deserialize("&c&lCorrupted Blacksmith: &7You don't have enough Blacksmith Scrap!"));
             return;
         }
 
@@ -233,19 +214,127 @@ public class CorruptedBlacksmithGui {
             return;
         }
 
-        // Give corrupted item to player
-        player.getInventory().addItem(previewItem);
+        // Remove materials from pouch
+        if (!plugin.getPouchIntegration().removeItem(player, MATERIAL_ID, MATERIAL_AMOUNT)) {
+            // Refund money
+            plugin.getVaultIntegration().deposit(player, COST);
+            player.sendMessage(LEGACY.deserialize("&c&lCorrupted Blacksmith: &7Failed to consume materials!"));
+            return;
+        }
 
-        player.sendMessage(LEGACY.deserialize("&4&lCorrupted Blacksmith: &7Your item has been corrupted!"));
-        player.closeInventory();
+        // Store the original item for potential reroll
+        ItemStack originalItem = inputItem.clone();
 
-        // Clear state
+        // Roll corruption and apply immediately
+        int corruptionType = random.nextInt(4);
+        ItemManipulator manipulator = plugin.getItemManipulator();
+        ItemStack result;
+
+        switch (corruptionType) {
+            case 0: // Upgrade stat by 30%
+                result = manipulator.upgradeRandomStat(inputItem, 0.30);
+                player.sendMessage(LEGACY.deserialize("&4&lCorrupted Blacksmith: &a+30% to a random stat!"));
+                break;
+            case 1: // Remove random stat
+                result = manipulator.removeRandomStat(inputItem);
+                player.sendMessage(LEGACY.deserialize("&4&lCorrupted Blacksmith: &eA stat was removed."));
+                break;
+            case 2: // Add new stat
+                result = manipulator.addRandomStat(inputItem);
+                player.sendMessage(LEGACY.deserialize("&4&lCorrupted Blacksmith: &bA new stat was added!"));
+                break;
+            case 3: // Remove ALL stats
+            default:
+                result = manipulator.removeAllStats(inputItem);
+                player.sendMessage(LEGACY.deserialize("&4&lCorrupted Blacksmith: &c&lALL stats removed!"));
+                break;
+        }
+
+        // IMPORTANT: Clear inputItem BEFORE closing to prevent duplication in handleClose()
         inputItem = null;
-        previewItem = null;
+
+        // Check if player has reroll stone and can reroll
+        if (hasSmithStone && !hasRerolled) {
+            // Show result and ask if they want to reroll
+            // Store original for reroll capability
+            this.originalItemForReroll = originalItem;
+            showRerollOption(result, corruptionType);
+        } else {
+            // Give result to player and close
+            player.getInventory().addItem(result);
+            player.sendMessage(LEGACY.deserialize("&4&lCorrupted Blacksmith: &7Your item has been corrupted!"));
+            player.closeInventory();
+        }
+    }
+
+    private void showRerollOption(ItemStack result, int corruptionType) {
+        // Store result item for accept/reroll handling
+        this.resultItem = result;
+
+        // Clear GUI
+        ItemStack blackPane = createItem(Material.BLACK_STAINED_GLASS_PANE, " ");
+        for (int i = 9; i < 45; i++) {
+            inventory.setItem(i, blackPane);
+        }
+
+        // Show result
+        inventory.setItem(20, result);
+
+        // Show corruption type
+        String outcomeText;
+        switch (corruptionType) {
+            case 0:
+                outcomeText = "&a+30% to a random stat";
+                break;
+            case 1:
+                outcomeText = "&eA stat was removed";
+                break;
+            case 2:
+                outcomeText = "&bA new stat was added";
+                break;
+            default:
+                outcomeText = "&c&lALL stats removed!";
+                break;
+        }
+
+        inventory.setItem(SLOT_INFO, createItem(Material.PAPER, "&e&lCorruption Result",
+            "&7Result: " + outcomeText,
+            "",
+            "&7You can accept this result",
+            "&7or use your Smithing Stone",
+            "&7to reroll ONCE."));
+
+        // Accept button
+        inventory.setItem(22, createItem(Material.LIME_CONCRETE, "&a&lAccept Result",
+            "&7Take this corrupted item.",
+            "",
+            "&aClick to accept!"));
+
+        // Reroll button
+        inventory.setItem(24, createItem(Material.ORANGE_CONCRETE, "&6&lReroll (Use Stone)",
+            "&7Use your Smithing Stone",
+            "&7to try a different outcome.",
+            "",
+            "&c&lThis consumes the stone!",
+            "",
+            "&6Click to reroll!"));
+    }
+
+    public void handleAcceptResult() {
+        if (resultItem == null) return;
+
+        player.getInventory().addItem(resultItem);
+        player.sendMessage(LEGACY.deserialize("&4&lCorrupted Blacksmith: &7Your item has been corrupted!"));
+
+        // Clear state before closing
+        resultItem = null;
+        originalItemForReroll = null;
+
+        player.closeInventory();
     }
 
     public void handleReroll() {
-        if (inputItem == null || hasRerolled || !hasSmithStone) return;
+        if (originalItemForReroll == null || hasRerolled || !hasSmithStone) return;
 
         // Remove smith stone
         if (!plugin.getMythicMobsIntegration().removeItem(player, "smith_stone", 1)) {
@@ -256,44 +345,67 @@ public class CorruptedBlacksmithGui {
         hasRerolled = true;
         hasSmithStone = false;
 
-        // Reroll corruption
-        rollCorruption();
+        // Roll NEW corruption on the ORIGINAL item (not the already corrupted one)
+        int corruptionType = random.nextInt(4);
+        ItemManipulator manipulator = plugin.getItemManipulator();
+        ItemStack newResult;
 
-        player.sendMessage(LEGACY.deserialize("&6&lCorrupted Blacksmith: &7You used a Corrupted Smithing Stone to reroll!"));
-
-        // Update GUI
-        updateGui();
-    }
-
-    public void handleCancel() {
-        // Return input item if exists
-        if (inputItem != null) {
-            returnItemToPlayer(inputItem);
-            inputItem = null;
+        switch (corruptionType) {
+            case 0: // Upgrade stat by 30%
+                newResult = manipulator.upgradeRandomStat(originalItemForReroll, 0.30);
+                player.sendMessage(LEGACY.deserialize("&6&lReroll: &a+30% to a random stat!"));
+                break;
+            case 1: // Remove random stat
+                newResult = manipulator.removeRandomStat(originalItemForReroll);
+                player.sendMessage(LEGACY.deserialize("&6&lReroll: &eA stat was removed."));
+                break;
+            case 2: // Add new stat
+                newResult = manipulator.addRandomStat(originalItemForReroll);
+                player.sendMessage(LEGACY.deserialize("&6&lReroll: &bA new stat was added!"));
+                break;
+            case 3: // Remove ALL stats
+            default:
+                newResult = manipulator.removeAllStats(originalItemForReroll);
+                player.sendMessage(LEGACY.deserialize("&6&lReroll: &c&lALL stats removed!"));
+                break;
         }
+
+        player.sendMessage(LEGACY.deserialize("&6&lCorrupted Blacksmith: &7You used a Corrupted Smithing Stone!"));
+        player.getInventory().addItem(newResult);
+
+        // Clear state before closing
+        resultItem = null;
+        originalItemForReroll = null;
+
         player.closeInventory();
     }
 
     public void handleClose() {
-        // Return input item if exists
+        // Return input item if exists (only if not processed yet)
         if (inputItem != null) {
             returnItemToPlayer(inputItem);
             inputItem = null;
         }
+
+        // If in reroll state, give the result item to player (they closed during reroll decision)
+        if (resultItem != null) {
+            returnItemToPlayer(resultItem);
+            resultItem = null;
+        }
+
+        // Clear other state
+        originalItemForReroll = null;
     }
 
     private void returnItemToPlayer(ItemStack item) {
         if (item == null || item.getType().isAir()) return;
 
         if (player.isOnline()) {
-            // Try to add to inventory
             var leftover = player.getInventory().addItem(item);
-            // Drop any items that didn't fit
             for (ItemStack drop : leftover.values()) {
                 player.getWorld().dropItemNaturally(player.getLocation(), drop);
             }
         } else {
-            // Player offline - drop at their last location
             player.getWorld().dropItemNaturally(player.getLocation(), item);
         }
     }
@@ -314,10 +426,11 @@ public class CorruptedBlacksmithGui {
         lore.add("&7Protection is never affected.");
         lore.add("");
         lore.add("&eCost: &c" + plugin.getVaultIntegration().formatCompact(COST));
+        lore.add("&eMaterial: &c" + MATERIAL_AMOUNT + "x &6Blacksmith Scrap");
         lore.add("");
         if (hasSmithStone) {
             lore.add("&6You have a Smithing Stone!");
-            lore.add("&7Use it for one free reroll.");
+            lore.add("&7Use it for one reroll.");
         }
         lore.add("&8━━━━━━━━━━━━━━━━━━━━");
 
@@ -355,5 +468,15 @@ public class CorruptedBlacksmithGui {
 
     public int getInputSlot() {
         return SLOT_INPUT;
+    }
+
+    public int getProceedSlot() {
+        return SLOT_PROCEED;
+    }
+
+    public boolean isInRerollState() {
+        // Check if we're in the reroll decision state
+        ItemStack acceptButton = inventory.getItem(22);
+        return acceptButton != null && acceptButton.getType() == Material.LIME_CONCRETE;
     }
 }

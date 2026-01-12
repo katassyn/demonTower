@@ -9,6 +9,7 @@ import pl.yourserver.demonTowerPlugin.game.SessionManager;
 import pl.yourserver.demonTowerPlugin.gui.GuiManager;
 import pl.yourserver.demonTowerPlugin.integration.EssentialsIntegration;
 import pl.yourserver.demonTowerPlugin.integration.MythicMobsIntegration;
+import pl.yourserver.demonTowerPlugin.integration.PouchIntegration;
 import pl.yourserver.demonTowerPlugin.integration.VaultIntegration;
 import pl.yourserver.demonTowerPlugin.mechanics.ItemManipulator;
 import pl.yourserver.demonTowerPlugin.listeners.GuiListener;
@@ -24,6 +25,7 @@ public final class DemonTowerPlugin extends JavaPlugin {
     private MythicMobsIntegration mythicMobsIntegration;
     private EssentialsIntegration essentialsIntegration;
     private VaultIntegration vaultIntegration;
+    private PouchIntegration pouchIntegration;
     private ItemManipulator itemManipulator;
     private DatabaseManager databaseManager;
     private FloorDropsManager floorDropsManager;
@@ -46,6 +48,9 @@ public final class DemonTowerPlugin extends JavaPlugin {
 
         vaultIntegration = new VaultIntegration(this);
         vaultIntegration.setup();
+
+        pouchIntegration = new PouchIntegration(this);
+        pouchIntegration.setup();
 
         itemManipulator = new ItemManipulator(this);
 
@@ -151,6 +156,10 @@ public final class DemonTowerPlugin extends JavaPlugin {
 
     public VaultIntegration getVaultIntegration() {
         return vaultIntegration;
+    }
+
+    public PouchIntegration getPouchIntegration() {
+        return pouchIntegration;
     }
 
     public ItemManipulator getItemManipulator() {

@@ -26,17 +26,16 @@ public class DivineSourceGui {
 
     // Slot positions
     public static final int SLOT_INPUT = 20;           // Accessory to sanctify
-    public static final int SLOT_PREVIEW = 24;         // Preview of result
-    public static final int SLOT_CONFIRM = 38;         // Confirm button
-    public static final int SLOT_CANCEL = 42;          // Cancel button
+    public static final int SLOT_PROCEED = 24;         // Proceed button
     public static final int SLOT_INFO = 4;             // Info display
 
     // State
     private ItemStack inputItem = null;
-    private ItemStack previewItem = null;
 
     // Cost
     public static final double COST = 300_000_000;     // 300m$
+    public static final String MATERIAL_ID = "divine_droplet";
+    public static final int MATERIAL_AMOUNT = 10;
 
     public DivineSourceGui(DemonTowerPlugin plugin, Player player) {
         this.plugin = plugin;
@@ -66,41 +65,46 @@ public class DivineSourceGui {
             "&7Place an accessory to sanctify.",
             "",
             "&7Only accessories can be blessed!",
-            "&7(No Boss Souls)"));
+            "&7(No Boss Souls)",
+            "",
+            "&e+50% &7to one random stat",
+            "&e+25% &7to all other stats",
+            "",
+            "&eClick or drag item here"));
 
         // Arrow indicator
         inventory.setItem(22, createItem(Material.NETHER_STAR, "&b&l>>>", "&7Sanctify accessory"));
 
-        // Preview slot
-        inventory.setItem(SLOT_PREVIEW, createItem(Material.BARRIER, "&7&lNo Preview",
-            "&7Place an accessory first."));
-
-        // Cancel button
-        inventory.setItem(SLOT_CANCEL, createItem(Material.RED_CONCRETE, "&c&lCancel",
-            "&7Close without changes."));
-
-        // Confirm button (disabled initially)
-        inventory.setItem(SLOT_CONFIRM, createItem(Material.GRAY_CONCRETE, "&7&lWaiting for accessory...",
+        // Proceed button (disabled initially)
+        inventory.setItem(SLOT_PROCEED, createItem(Material.GRAY_CONCRETE, "&7&lWaiting for accessory...",
             "&7Place an accessory to sanctify."));
 
         player.openInventory(inventory);
     }
 
-    public void handleItemPlace(ItemStack item) {
+    /**
+     * Try to place an item in the GUI.
+     * @return true if item was accepted, false if rejected (item stays in player inventory)
+     */
+    public boolean handleItemPlace(ItemStack item) {
         ItemManipulator manipulator = plugin.getItemManipulator();
+
+        // Require unstacked item (amount = 1)
+        if (item.getAmount() > 1) {
+            player.sendMessage(LEGACY.deserialize("&9&lDivine Source: &7You must place a single item, not a stack! Unstack your items first."));
+            return false; // Item stays in player inventory
+        }
 
         // Check if it's an accessory
         if (!manipulator.isAccessory(item)) {
             player.sendMessage(LEGACY.deserialize("&9&lDivine Source: &7Only accessories can be sanctified!"));
-            returnItemToPlayer(item);
-            return;
+            return false;
         }
 
         // Check if it's a boss soul
         if (manipulator.isBossSoul(item)) {
             player.sendMessage(LEGACY.deserialize("&9&lDivine Source: &7Boss Souls cannot be sanctified!"));
-            returnItemToPlayer(item);
-            return;
+            return false;
         }
 
         ItemState state = manipulator.getItemState(item);
@@ -108,76 +112,78 @@ public class DivineSourceGui {
         // Check restrictions
         if (state == ItemState.CORRUPTED) {
             player.sendMessage(LEGACY.deserialize("&9&lDivine Source: &7CORRUPTED items cannot be sanctified!"));
-            returnItemToPlayer(item);
-            return;
+            return false;
         }
 
         if (state == ItemState.SANCTIFIED) {
             player.sendMessage(LEGACY.deserialize("&9&lDivine Source: &7This item is already sanctified!"));
-            returnItemToPlayer(item);
-            return;
+            return false;
         }
 
         if (state == ItemState.ULTIMATE) {
             player.sendMessage(LEGACY.deserialize("&9&lDivine Source: &7ULTIMATE items cannot be sanctified!"));
-            returnItemToPlayer(item);
-            return;
+            return false;
         }
 
         inputItem = item;
-
-        // Generate preview
-        previewItem = manipulator.sanctifyAccessory(item);
-
         updateGui();
+        return true; // Item accepted
     }
 
     private void updateGui() {
         // Show input item
-        inventory.setItem(SLOT_INPUT, inputItem != null ? inputItem :
-            createItem(Material.BEACON, "&9&lPlace Accessory Here",
-                "&7Place an accessory to sanctify.",
+        inventory.setItem(SLOT_INPUT, inputItem);
+
+        // Check balance and materials
+        boolean hasBalance = plugin.getVaultIntegration().hasBalance(player, COST);
+        boolean hasMaterials = plugin.getPouchIntegration().hasItem(player, MATERIAL_ID, MATERIAL_AMOUNT);
+        String costDisplay = plugin.getVaultIntegration().formatCompact(COST);
+        int currentMaterials = plugin.getPouchIntegration().getItemAmount(player, MATERIAL_ID);
+
+        if (hasBalance && hasMaterials) {
+            inventory.setItem(SLOT_PROCEED, createItem(Material.LIME_CONCRETE, "&a&lSanctify Accessory",
+                "&7Bless this accessory with divine power.",
                 "",
-                "&7Only accessories can be blessed!",
-                "&7(No Boss Souls)"));
-
-        if (previewItem != null) {
-            inventory.setItem(SLOT_PREVIEW, previewItem);
-
-            // Check balance
-            boolean hasBalance = plugin.getVaultIntegration().hasBalance(player, COST);
-            String costDisplay = plugin.getVaultIntegration().formatCompact(COST);
-
-            if (hasBalance) {
-                inventory.setItem(SLOT_CONFIRM, createItem(Material.LIME_CONCRETE, "&a&lConfirm Sanctification",
-                    "&7Bless this accessory.",
-                    "",
-                    "&e+50% to one random stat!",
-                    "&e+25% to all other stats!",
-                    "",
-                    "&eCost: &c" + costDisplay,
-                    "",
-                    "&aClick to confirm!"));
-            } else {
-                inventory.setItem(SLOT_CONFIRM, createItem(Material.GRAY_CONCRETE, "&c&lInsufficient Funds",
-                    "&7You don't have enough money.",
-                    "",
-                    "&eCost: &c" + costDisplay));
-            }
+                "&e+50% to one random stat!",
+                "&e+25% to all other stats!",
+                "",
+                "&eCost: &c" + costDisplay,
+                "&eMaterial: &c" + MATERIAL_AMOUNT + "x &6Divine Droplet",
+                "&7You have: &a" + currentMaterials,
+                "",
+                "&aClick to sanctify!"));
         } else {
-            inventory.setItem(SLOT_PREVIEW, createItem(Material.BARRIER, "&7&lNo Preview",
-                "&7Place an accessory first."));
-            inventory.setItem(SLOT_CONFIRM, createItem(Material.GRAY_CONCRETE, "&7&lWaiting for accessory...",
-                "&7Place an accessory to sanctify."));
+            List<String> lore = new ArrayList<>();
+            lore.add("&7You're missing requirements:");
+            lore.add("");
+            if (!hasBalance) {
+                lore.add("&c✗ &7Money: &c" + costDisplay);
+            } else {
+                lore.add("&a✓ &7Money: &a" + costDisplay);
+            }
+            if (!hasMaterials) {
+                lore.add("&c✗ &7Material: &c" + MATERIAL_AMOUNT + "x &6Divine Droplet");
+                lore.add("  &7You have: &c" + currentMaterials);
+            } else {
+                lore.add("&a✓ &7Material: &a" + MATERIAL_AMOUNT + "x &6Divine Droplet");
+            }
+            inventory.setItem(SLOT_PROCEED, createItem(Material.GRAY_CONCRETE, "&c&lMissing Requirements",
+                lore.toArray(new String[0])));
         }
     }
 
-    public void handleConfirm() {
-        if (inputItem == null || previewItem == null) return;
+    public void handleProceed() {
+        if (inputItem == null) return;
 
         // Check balance
         if (!plugin.getVaultIntegration().hasBalance(player, COST)) {
             player.sendMessage(LEGACY.deserialize("&9&lDivine Source: &7You don't have enough money!"));
+            return;
+        }
+
+        // Check materials from pouch
+        if (!plugin.getPouchIntegration().hasItem(player, MATERIAL_ID, MATERIAL_AMOUNT)) {
+            player.sendMessage(LEGACY.deserialize("&9&lDivine Source: &7You don't have enough Divine Droplets!"));
             return;
         }
 
@@ -187,23 +193,25 @@ public class DivineSourceGui {
             return;
         }
 
+        // Remove materials from pouch
+        if (!plugin.getPouchIntegration().removeItem(player, MATERIAL_ID, MATERIAL_AMOUNT)) {
+            // Refund money
+            plugin.getVaultIntegration().deposit(player, COST);
+            player.sendMessage(LEGACY.deserialize("&9&lDivine Source: &7Failed to consume materials!"));
+            return;
+        }
+
+        // Apply sanctification
+        ItemManipulator manipulator = plugin.getItemManipulator();
+        ItemStack result = manipulator.sanctifyAccessory(inputItem);
+
+        // IMPORTANT: Clear state BEFORE closing to prevent duplication in handleClose()
+        inputItem = null;
+
         // Give sanctified item to player
-        player.getInventory().addItem(previewItem);
+        player.getInventory().addItem(result);
 
         player.sendMessage(LEGACY.deserialize("&9&lDivine Source: &7Your accessory has been blessed by divine power!"));
-        player.closeInventory();
-
-        // Clear state
-        inputItem = null;
-        previewItem = null;
-    }
-
-    public void handleCancel() {
-        // Return input item
-        if (inputItem != null) {
-            returnItemToPlayer(inputItem);
-            inputItem = null;
-        }
         player.closeInventory();
     }
 
@@ -219,14 +227,11 @@ public class DivineSourceGui {
         if (item == null || item.getType().isAir()) return;
 
         if (player.isOnline()) {
-            // Try to add to inventory
             var leftover = player.getInventory().addItem(item);
-            // Drop any items that didn't fit
             for (ItemStack drop : leftover.values()) {
                 player.getWorld().dropItemNaturally(player.getLocation(), drop);
             }
         } else {
-            // Player offline - drop at their last location
             player.getWorld().dropItemNaturally(player.getLocation(), item);
         }
     }
@@ -248,6 +253,7 @@ public class DivineSourceGui {
         lore.add("&7- Smelted items OK");
         lore.add("");
         lore.add("&eCost: &c" + plugin.getVaultIntegration().formatCompact(COST));
+        lore.add("&eMaterial: &c" + MATERIAL_AMOUNT + "x &6Divine Droplet");
         lore.add("&8━━━━━━━━━━━━━━━━━━━━");
 
         return createItem(Material.BEACON, "&9&lDivine Source", lore.toArray(new String[0]));
@@ -278,7 +284,15 @@ public class DivineSourceGui {
         return inventory;
     }
 
+    public ItemStack getInputItem() {
+        return inputItem;
+    }
+
     public int getInputSlot() {
         return SLOT_INPUT;
+    }
+
+    public int getProceedSlot() {
+        return SLOT_PROCEED;
     }
 }

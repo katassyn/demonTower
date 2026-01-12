@@ -25,14 +25,26 @@ public class MobDeathListener implements Listener {
         this.plugin = plugin;
     }
 
+    private void debug(String message) {
+        if (plugin.getConfigManager().isDebugMode()) {
+            plugin.getLogger().info("[MobDeathListener DEBUG] " + message);
+        }
+    }
+
     @EventHandler(priority = EventPriority.NORMAL)
     public void onMythicMobDeath(MythicMobDeathEvent event) {
         Entity entity = event.getEntity();
         UUID mobId = entity.getUniqueId();
+        String mobType = event.getMobType().getInternalName();
+
+        debug("MythicMobDeath: mobType=" + mobType + ", mobId=" + mobId);
 
         DemonTowerSession session = plugin.getSessionManager().getCurrentSession();
         if (session != null && session.getAliveMobs().contains(mobId)) {
+            debug("  -> Mob is tracked, calling onMobKilled");
             session.onMobKilled(mobId);
+        } else {
+            debug("  -> Mob is NOT tracked (session=" + (session != null) + ", inAliveMobs=" + (session != null && session.getAliveMobs().contains(mobId)) + ")");
         }
     }
 
@@ -46,9 +58,12 @@ public class MobDeathListener implements Listener {
 
         UUID mobId = entity.getUniqueId();
 
+        debug("EntityDeath (MythicMob fallback): entity=" + entity.getType() + ", mobId=" + mobId);
+
         DemonTowerSession session = plugin.getSessionManager().getCurrentSession();
         if (session != null && session.getAliveMobs().contains(mobId)) {
             // MythicMobDeathEvent should handle this, but as fallback
+            debug("  -> Mob is tracked, calling onMobKilled (fallback)");
             session.onMobKilled(mobId);
         }
     }
@@ -75,9 +90,18 @@ public class MobDeathListener implements Listener {
         ItemStack item = event.getItem().getItemStack();
         String collectItem = stage.getCollectItem();
 
-        if (collectItem != null && plugin.getMythicMobsIntegration().isMythicItem(item, collectItem)) {
-            int amount = item.getAmount();
-            session.onItemCollected(amount);
+        debug("ItemPickup: player=" + player.getName() + ", itemType=" + item.getType() + ", amount=" + item.getAmount());
+        debug("  collectItem configured=" + collectItem);
+
+        if (collectItem != null) {
+            boolean isMythicItem = plugin.getMythicMobsIntegration().isMythicItem(item, collectItem);
+            debug("  isMythicItem=" + isMythicItem);
+
+            if (isMythicItem) {
+                int amount = item.getAmount();
+                debug("  -> Collecting " + amount + " items");
+                session.onItemCollected(amount);
+            }
         }
     }
 }

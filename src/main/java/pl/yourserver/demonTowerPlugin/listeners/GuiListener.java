@@ -55,15 +55,27 @@ public class GuiListener implements Listener {
             return;
         }
 
-        // Handle Floor Mechanic GUI (universal)
-        if (title.contains("Demon Tower") && !title.contains("Lobby") && !title.contains("Information")) {
-            handleFloorMechanicClick(player, slot);
+        // Handle Admin Floor Selection GUI (must be before general "Demon Tower" check)
+        if (title.contains("Admin Drops")) {
+            handleAdminFloorSelectionClick(player, event);
             return;
         }
 
-        // Handle Floor Transition GUI
-        if (title.contains("Advance") || title.contains("Floor")) {
-            handleTransitionClick(player, slot, title);
+        // Handle Admin Drops Editing GUI
+        if (title.contains("Drops Admin") || (title.contains("Admin") && title.contains("Drop"))) {
+            handleDropsAdminClick(player, event);
+            return;
+        }
+
+        // Handle Floor Selection GUI (Drop Preview) - must be before "Demon Tower" check
+        if (title.contains("Drop Preview") && !title.contains("Admin")) {
+            handleFloorSelectionClick(player, event);
+            return;
+        }
+
+        // Handle Floor Drops Preview GUI
+        if (title.contains("Floor") && title.contains("Drops") && !title.contains("Admin")) {
+            handleFloorDropsPreviewClick(player, event);
             return;
         }
 
@@ -97,21 +109,15 @@ public class GuiListener implements Listener {
             return;
         }
 
-        // Handle Floor Selection GUI (Drop Preview)
-        if (title.contains("Drop Preview") && !title.contains("Admin")) {
-            handleFloorSelectionClick(player, event);
+        // Handle Floor Transition GUI
+        if (title.contains("Advance")) {
+            handleTransitionClick(player, slot, title);
             return;
         }
 
-        // Handle Floor Drops Preview GUI
-        if (title.contains("Floor") && title.contains("Drop Preview") && !title.contains("Admin")) {
-            handleFloorDropsPreviewClick(player, event);
-            return;
-        }
-
-        // Handle Admin Floor Selection GUI
-        if (title.contains("Admin Drops")) {
-            handleAdminFloorSelectionClick(player, event);
+        // Handle Floor Mechanic GUI (universal) - must be AFTER all specific "Demon Tower" checks
+        if (title.contains("Demon Tower") && !title.contains("Drop") && !title.contains("Admin")) {
+            handleFloorMechanicClick(player, slot);
             return;
         }
     }
@@ -132,11 +138,8 @@ public class GuiListener implements Listener {
 
                 if (!inSession) {
                     if (plugin.getSessionManager().joinSession(player)) {
+                        // Just close GUI and let player play - don't reopen
                         player.closeInventory();
-                        // Reopen GUI to show updated state
-                        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                            plugin.getGuiManager().openLobbyGui(player);
-                        }, 5L);
                     }
                     // Error messages are sent by SessionManager.joinSession()
                 }
@@ -272,7 +275,7 @@ public class GuiListener implements Listener {
                 FloorConfig nextFloor = plugin.getConfigManager().getFloor(nextFloorNum);
                 if (nextFloor == null) {
                     // Final floor completed
-                    MessageUtils.sendMessage(player, "&aGratulacje! Ukonczyles wszystkie pietra!");
+                    MessageUtils.sendMessage(player, "&aCongratulations! You have completed all floors!");
                     return;
                 }
 
@@ -318,27 +321,35 @@ public class GuiListener implements Listener {
         if (isTopInventory) {
             event.setCancelled(true);
 
-            if (slot == CorruptedBlacksmithGui.SLOT_CONFIRM) {
-                gui.handleConfirm();
-            } else if (slot == CorruptedBlacksmithGui.SLOT_REROLL) {
-                gui.handleReroll();
-            } else if (slot == CorruptedBlacksmithGui.SLOT_CANCEL) {
-                gui.handleCancel();
+            // Check if in reroll decision state
+            if (gui.isInRerollState()) {
+                if (slot == 22) { // Accept button
+                    gui.handleAcceptResult();
+                } else if (slot == 24) { // Reroll button
+                    gui.handleReroll();
+                }
+                return;
+            }
+
+            if (slot == CorruptedBlacksmithGui.SLOT_PROCEED) {
+                gui.handleProceed();
             } else if (slot == CorruptedBlacksmithGui.SLOT_INPUT && gui.getInputItem() == null) {
-                // Allow item placement - handle in shift-click or cursor
+                // Allow item placement - handle cursor
                 ItemStack cursorItem = event.getCursor();
                 if (cursorItem != null && !cursorItem.getType().isAir()) {
-                    gui.handleItemPlace(cursorItem.clone());
-                    event.setCursor(null);
+                    // Only clear cursor if item was accepted
+                    if (gui.handleItemPlace(cursorItem.clone())) {
+                        event.setCursor(null);
+                    }
                 }
             }
         } else {
-            // Player inventory click
-            if (event.isShiftClick() && gui.getInputItem() == null) {
-                ItemStack clickedItem = event.getCurrentItem();
-                if (clickedItem != null && !clickedItem.getType().isAir()) {
-                    event.setCancelled(true);
-                    gui.handleItemPlace(clickedItem.clone());
+            // Player inventory click - allow both shift-click and normal click to place
+            ItemStack clickedItem = event.getCurrentItem();
+            if (clickedItem != null && !clickedItem.getType().isAir() && gui.getInputItem() == null) {
+                event.setCancelled(true);
+                // Only remove item from inventory if it was accepted
+                if (gui.handleItemPlace(clickedItem.clone())) {
                     event.setCurrentItem(null);
                 }
             }
@@ -357,30 +368,27 @@ public class GuiListener implements Listener {
 
             if (slot == DemonicSmelterGui.SLOT_CONFIRM) {
                 gui.handleConfirm();
-            } else if (slot == DemonicSmelterGui.SLOT_CANCEL) {
-                gui.handleCancel();
             } else if (slot == DemonicSmelterGui.SLOT_INPUT_1 || slot == DemonicSmelterGui.SLOT_INPUT_2) {
                 // Allow item placement
                 ItemStack cursorItem = event.getCursor();
                 if (cursorItem != null && !cursorItem.getType().isAir()) {
-                    gui.handleItemPlace(slot, cursorItem.clone());
-                    event.setCursor(null);
+                    // Only clear cursor if item was accepted
+                    if (gui.handleItemPlace(slot, cursorItem.clone())) {
+                        event.setCursor(null);
+                    }
                 }
             }
+            // No cancel button - players close inventory to get items back
         } else {
-            // Player inventory - handle shift-click
-            if (event.isShiftClick()) {
-                ItemStack clickedItem = event.getCurrentItem();
-                if (clickedItem != null && !clickedItem.getType().isAir()) {
-                    event.setCancelled(true);
-                    // Determine which slot to fill
-                    int targetSlot = DemonicSmelterGui.SLOT_INPUT_1;
-                    ItemStack slot1Item = gui.getInventory().getItem(DemonicSmelterGui.SLOT_INPUT_1);
-                    if (slot1Item != null && !slot1Item.getType().isAir() &&
-                        !slot1Item.getType().name().contains("BLAST_FURNACE")) {
-                        targetSlot = DemonicSmelterGui.SLOT_INPUT_2;
-                    }
-                    gui.handleItemPlace(targetSlot, clickedItem.clone());
+            // Player inventory - allow both shift-click and normal click
+            ItemStack clickedItem = event.getCurrentItem();
+            if (clickedItem != null && !clickedItem.getType().isAir()) {
+                event.setCancelled(true);
+                // Determine which slot to fill
+                int targetSlot = (gui.getInputItem1() == null) ?
+                    DemonicSmelterGui.SLOT_INPUT_1 : DemonicSmelterGui.SLOT_INPUT_2;
+                // Only remove item from inventory if it was accepted
+                if (gui.handleItemPlace(targetSlot, clickedItem.clone())) {
                     event.setCurrentItem(null);
                 }
             }
@@ -397,25 +405,25 @@ public class GuiListener implements Listener {
         if (isTopInventory) {
             event.setCancelled(true);
 
-            if (slot == DivineSourceGui.SLOT_CONFIRM) {
-                gui.handleConfirm();
-            } else if (slot == DivineSourceGui.SLOT_CANCEL) {
-                gui.handleCancel();
-            } else if (slot == DivineSourceGui.SLOT_INPUT) {
+            if (slot == DivineSourceGui.SLOT_PROCEED) {
+                gui.handleProceed();
+            } else if (slot == DivineSourceGui.SLOT_INPUT && gui.getInputItem() == null) {
                 // Allow item placement
                 ItemStack cursorItem = event.getCursor();
                 if (cursorItem != null && !cursorItem.getType().isAir()) {
-                    gui.handleItemPlace(cursorItem.clone());
-                    event.setCursor(null);
+                    // Only clear cursor if item was accepted
+                    if (gui.handleItemPlace(cursorItem.clone())) {
+                        event.setCursor(null);
+                    }
                 }
             }
         } else {
-            // Player inventory - handle shift-click
-            if (event.isShiftClick()) {
-                ItemStack clickedItem = event.getCurrentItem();
-                if (clickedItem != null && !clickedItem.getType().isAir()) {
-                    event.setCancelled(true);
-                    gui.handleItemPlace(clickedItem.clone());
+            // Player inventory - allow both shift-click and normal click
+            ItemStack clickedItem = event.getCurrentItem();
+            if (clickedItem != null && !clickedItem.getType().isAir() && gui.getInputItem() == null) {
+                event.setCancelled(true);
+                // Only remove item from inventory if it was accepted
+                if (gui.handleItemPlace(clickedItem.clone())) {
                     event.setCurrentItem(null);
                 }
             }
@@ -440,24 +448,22 @@ public class GuiListener implements Listener {
                 // Allow item placement
                 ItemStack cursorItem = event.getCursor();
                 if (cursorItem != null && !cursorItem.getType().isAir()) {
-                    gui.handleItemPlace(slot, cursorItem.clone());
-                    event.setCursor(null);
+                    // Only clear cursor if item was accepted
+                    if (gui.handleItemPlace(slot, cursorItem.clone())) {
+                        event.setCursor(null);
+                    }
                 }
             }
         } else {
-            // Player inventory - handle shift-click
-            if (event.isShiftClick()) {
-                ItemStack clickedItem = event.getCurrentItem();
-                if (clickedItem != null && !clickedItem.getType().isAir()) {
-                    event.setCancelled(true);
-                    // Determine which slot to fill
-                    int targetSlot = InfernalCrucibleGui.SLOT_INPUT_1;
-                    ItemStack slot1Item = gui.getInventory().getItem(InfernalCrucibleGui.SLOT_INPUT_1);
-                    if (slot1Item != null && !slot1Item.getType().isAir() &&
-                        !slot1Item.getType().name().contains("END_CRYSTAL")) {
-                        targetSlot = InfernalCrucibleGui.SLOT_INPUT_2;
-                    }
-                    gui.handleItemPlace(targetSlot, clickedItem.clone());
+            // Player inventory - allow both shift-click and normal click
+            ItemStack clickedItem = event.getCurrentItem();
+            if (clickedItem != null && !clickedItem.getType().isAir()) {
+                event.setCancelled(true);
+                // Determine which slot to fill
+                int targetSlot = (gui.getInputItem1() == null) ?
+                    InfernalCrucibleGui.SLOT_INPUT_1 : InfernalCrucibleGui.SLOT_INPUT_2;
+                // Only remove item from inventory if it was accepted
+                if (gui.handleItemPlace(targetSlot, clickedItem.clone())) {
                     event.setCurrentItem(null);
                 }
             }

@@ -85,6 +85,28 @@ public class EssentialsIntegration {
         }
     }
 
+    /**
+     * Teleport player to spawn using EssentialsX spawn command (not warp)
+     * @param player the player to teleport
+     * @return true if successful
+     */
+    public boolean teleportToSpawn(Player player) {
+        // Use command-based approach for spawn since it's more reliable
+        try {
+            // Execute the spawn command as console
+            return plugin.getServer().dispatchCommand(
+                plugin.getServer().getConsoleSender(),
+                "spawn " + player.getName()
+            );
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to teleport player to spawn: " + e.getMessage());
+            // Try to get world spawn as last resort
+            Location worldSpawn = player.getWorld().getSpawnLocation();
+            player.teleport(worldSpawn);
+            return true;
+        }
+    }
+
     public int getPlayerLevel(Player player) {
         // Use vanilla XP level
         return player.getLevel();

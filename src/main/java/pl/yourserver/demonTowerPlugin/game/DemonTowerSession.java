@@ -18,6 +18,7 @@ public class DemonTowerSession {
     private final Set<UUID> players = new HashSet<>();
     private final Set<UUID> aliveMobs = new HashSet<>();
     private UUID bossId = null;
+    private UUID partyLeader = null; // The player who used the key to start the session
 
     private int currentFloor;
     private int currentStage;
@@ -82,13 +83,19 @@ public class DemonTowerSession {
         }
 
         if (players.add(player.getUniqueId())) {
+            // First player becomes party leader (the one who used the key)
+            if (partyLeader == null) {
+                partyLeader = player.getUniqueId();
+            }
+
             // Teleport to lobby
             StageConfig lobbyStage = floor.getFirstStage();
             if (lobbyStage != null) {
                 plugin.getEssentialsIntegration().warpPlayer(player, lobbyStage.getWarp());
             }
 
-            broadcastMessage(plugin.getConfigManager().getMessage("player_joined", "player", player.getName()));
+            // Send join message only to the player who joined (not to whole server/session)
+            MessageUtils.sendMessage(player, plugin.getConfigManager().getMessage("player_joined", "player", player.getName()));
 
             // Start lobby countdown when first player joins
             if (!lobbyCountdownStarted && lobbyStage != null && lobbyStage.getType() == StageType.LOBBY) {
@@ -225,12 +232,15 @@ public class DemonTowerSession {
                 spawnMobs(stage);
                 spawnBoss(stage);
                 startTimer(stage.getTimeSeconds());
-                broadcastTitle("&4&lBOSS", "&c" + stage.getBoss(), 10, 60, 10);
+                // Format boss name nicely for title
+                broadcastTitle("&4&lBOSS", "&c" + formatMobName(stage.getBoss()), 10, 60, 10);
                 break;
             case COLLECT:
                 state = SessionState.COLLECTING;
                 teleportAllPlayers(stage.getWarp());
                 spawnMobs(stage);
+                // Start timer for COLLECT stages too - shows progress in action bar
+                startCollectTimer(stage);
                 broadcastTitle("&6&lCOLLECTING",
                     "&7Collect &e" + stage.getCollectAmount() + " &7items", 10, 40, 10);
                 break;
@@ -365,8 +375,38 @@ public class DemonTowerSession {
                 aliveMobs.add(bossId);
                 totalMobCount++;
             }
-            broadcastMessage(plugin.getConfigManager().getMessage("boss_spawned", "boss", stage.getBoss()));
+            // Format boss name nicely (remove underscores, capitalize words)
+            String formattedBossName = formatMobName(stage.getBoss());
+            broadcastMessage(plugin.getConfigManager().getMessage("boss_spawned", "boss", formattedBossName));
         }
+    }
+
+    /**
+     * Format a MythicMobs mob ID into a nice display name.
+     * Converts "valgroth_dark_monarch" to "Valgroth Dark Monarch"
+     */
+    private String formatMobName(String mobId) {
+        if (mobId == null || mobId.isEmpty()) return mobId;
+
+        // Replace underscores with spaces and capitalize each word
+        String[] words = mobId.replace("_", " ").split(" ");
+        StringBuilder result = new StringBuilder();
+
+        for (int i = 0; i < words.length; i++) {
+            String word = words[i];
+            if (!word.isEmpty()) {
+                // Capitalize first letter, lowercase rest
+                result.append(Character.toUpperCase(word.charAt(0)));
+                if (word.length() > 1) {
+                    result.append(word.substring(1).toLowerCase());
+                }
+                if (i < words.length - 1) {
+                    result.append(" ");
+                }
+            }
+        }
+
+        return result.toString();
     }
 
     private void startTimer(int seconds) {
@@ -386,6 +426,49 @@ public class DemonTowerSession {
                 int percent = totalMobCount > 0 ? (int) ((killedMobs / (double) totalMobCount) * 100) : 0;
                 broadcastActionBar("&cTime: " + MessageUtils.formatTimeColored(timeRemaining) +
                     " &7| &eMobs: &a" + killedMobs + "&7/&a" + totalMobCount + " &7(&e" + percent + "%&7)");
+
+                // Warning titles at specific times
+                if (timeRemaining == 60 || timeRemaining == 30 || timeRemaining == 10) {
+                    broadcastTitle("&c" + timeRemaining, "&7seconds remaining!", 5, 20, 5);
+                }
+
+                if (timeRemaining <= 5) {
+                    broadcastTitle("&4&l" + timeRemaining, "", 0, 20, 0);
+                }
+
+                timeRemaining--;
+            }
+        }.runTaskTimer(plugin, 0L, 20L);
+    }
+
+    /**
+     * Start a collect progress timer that shows progress in action bar
+     */
+    private void startCollectTimer(StageConfig stage) {
+        timeRemaining = stage.getTimeSeconds();
+        int requiredAmount = stage.getCollectAmount();
+
+        timerTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                // Check if collect stage is complete
+                if (collectedItems >= requiredAmount) {
+                    cancel();
+                    return;
+                }
+
+                if (timeRemaining <= 0) {
+                    cancel();
+                    onTimeUp();
+                    return;
+                }
+
+                // Show collect progress in action bar
+                int killedMobs = totalMobCount - aliveMobs.size();
+                int percent = requiredAmount > 0 ? (int) ((collectedItems / (double) requiredAmount) * 100) : 0;
+                broadcastActionBar("&cTime: " + MessageUtils.formatTimeColored(timeRemaining) +
+                    " &7| &6Collected: &a" + collectedItems + "&7/&a" + requiredAmount + " &7(&e" + percent + "%&7)" +
+                    " &7| &eMobs: &a" + killedMobs + "&7/&a" + totalMobCount);
 
                 // Warning titles at specific times
                 if (timeRemaining == 60 || timeRemaining == 30 || timeRemaining == 10) {
@@ -462,17 +545,38 @@ public class DemonTowerSession {
     }
 
     public void onItemCollected(int amount) {
+        if (plugin.getConfigManager().isDebugMode()) {
+            plugin.getLogger().info("[DemonTowerSession DEBUG] onItemCollected called with amount=" + amount);
+        }
+
         FloorConfig floor = plugin.getConfigManager().getFloor(currentFloor);
-        if (floor == null) return;
+        if (floor == null) {
+            if (plugin.getConfigManager().isDebugMode()) {
+                plugin.getLogger().info("[DemonTowerSession DEBUG] Floor is null, returning");
+            }
+            return;
+        }
 
         StageConfig stage = floor.getStage(currentStage);
-        if (stage == null || stage.getType() != StageType.COLLECT) return;
+        if (stage == null || stage.getType() != StageType.COLLECT) {
+            if (plugin.getConfigManager().isDebugMode()) {
+                plugin.getLogger().info("[DemonTowerSession DEBUG] Stage is null or not COLLECT type, returning");
+            }
+            return;
+        }
 
         collectedItems += amount;
+        if (plugin.getConfigManager().isDebugMode()) {
+            plugin.getLogger().info("[DemonTowerSession DEBUG] Collected items: " + collectedItems + "/" + stage.getCollectAmount());
+        }
+
         broadcastActionBar(plugin.getConfigManager().getMessage("collect_progress",
             "current", collectedItems, "required", stage.getCollectAmount()));
 
         if (collectedItems >= stage.getCollectAmount()) {
+            if (plugin.getConfigManager().isDebugMode()) {
+                plugin.getLogger().info("[DemonTowerSession DEBUG] Collect complete! Completing stage.");
+            }
             broadcastMessage(plugin.getConfigManager().getMessage("collect_complete"));
             completeStage();
         }
@@ -516,6 +620,28 @@ public class DemonTowerSession {
         if (stage.getType() == StageType.COLLECT) {
             if (collectedItems >= stage.getCollectAmount()) {
                 completeStage();
+            } else {
+                // Check if 80% of mobs killed but not enough drops - respawn mobs
+                int killedMobs = totalMobCount - aliveMobs.size();
+                double currentPercentage = totalMobCount > 0 ? (killedMobs / (double) totalMobCount) : 0.0;
+
+                if (currentPercentage >= 0.80) {
+                    // Kill remaining mobs and respawn all
+                    plugin.getMythicMobsIntegration().killMobs(aliveMobs);
+                    aliveMobs.clear();
+                    totalMobCount = 0;
+
+                    broadcastMessage("&e&l[!] &7Not enough drops collected. Respawning mobs...");
+                    broadcastTitle("&6RESPAWNING", "&7Collect more items!", 10, 40, 10);
+
+                    // Respawn mobs after a short delay
+                    new BukkitRunnable() {
+                        @Override
+                        public void run() {
+                            spawnMobs(stage);
+                        }
+                    }.runTaskLater(plugin, 40L); // 2 second delay
+                }
             }
         }
     }
@@ -596,30 +722,21 @@ public class DemonTowerSession {
 
             broadcastTitle("&a&lFLOOR " + currentFloor + " COMPLETED!", "", 10, 60, 20);
             broadcastMessage(plugin.getConfigManager().getMessage("floor_complete", "floor", currentFloor));
+            broadcastMessage("&7Click the &eNPC &7to access floor mechanics!");
 
             // Start mechanic timeout (5 minutes)
             startMechanicTimeout();
 
-            // Auto-open GUI for all players
-            for (UUID playerId : players) {
-                Player p = plugin.getServer().getPlayer(playerId);
-                if (p != null && p.isOnline()) {
-                    plugin.getGuiManager().openFloorMechanicGui(p);
-                }
-            }
+            // Don't auto-open GUI - player must click NPC or use /dt_gui command
         } else {
             // This was the final floor - victory!
             state = SessionState.COMPLETED;
             broadcastTitle("&6&lVICTORY!", "&aDemon Tower completed!", 20, 100, 20);
-            // Open final floor mechanic GUI before ending
-            for (UUID playerId : players) {
-                Player p = plugin.getServer().getPlayer(playerId);
-                if (p != null && p.isOnline()) {
-                    plugin.getGuiManager().openFloorMechanicGui(p);
-                }
-            }
+            broadcastMessage("&7Click the &eNPC &7to access floor mechanics!");
+
             // Start mechanic timeout for final floor too
             startMechanicTimeout();
+            // Don't auto-open GUI - player must click NPC or use /dt_gui command
         }
     }
 
@@ -638,11 +755,11 @@ public class DemonTowerSession {
 
                 // Warnings at specific times
                 if (mechanicTimeRemaining == 60) {
-                    broadcastMessage("&c&l[!] &e1 minuta &7do zakonczenia! Uzyj mechaniki lub przejdz dalej!");
+                    broadcastMessage("&c&l[!] &e1 minute &7remaining! Use the mechanic or advance!");
                 } else if (mechanicTimeRemaining == 30) {
-                    broadcastMessage("&c&l[!] &c30 sekund &7do zakonczenia!");
+                    broadcastMessage("&c&l[!] &c30 seconds &7remaining!");
                 } else if (mechanicTimeRemaining <= 10) {
-                    broadcastTitle("&c" + mechanicTimeRemaining, "&7Czas sie konczy!", 0, 20, 0);
+                    broadcastTitle("&c" + mechanicTimeRemaining, "&7Time is running out!", 0, 20, 0);
                 }
 
                 mechanicTimeRemaining--;
@@ -658,15 +775,15 @@ public class DemonTowerSession {
     }
 
     private void onMechanicTimeout() {
-        broadcastTitle("&4&lCZAS MINAŁ!", "&cZostajecie przeniesieni na spawn...", 10, 60, 20);
-        broadcastMessage("&c&l[!] &7Czas na mechanike sie skonczyl! Sesja zostaje zresetowana.");
+        broadcastTitle("&4&lTIME'S UP!", "&cYou are being teleported to spawn...", 10, 60, 20);
+        broadcastMessage("&c&l[!] &7Mechanic time has ended! Session is being reset.");
 
         // Teleport all players to spawn
         for (UUID playerId : players) {
             Player p = plugin.getServer().getPlayer(playerId);
             if (p != null && p.isOnline()) {
                 p.closeInventory();
-                plugin.getEssentialsIntegration().warpPlayer(p, "spawn");
+                plugin.getEssentialsIntegration().teleportToSpawn(p);
             }
         }
 
@@ -777,7 +894,9 @@ public class DemonTowerSession {
         FloorConfig floor = plugin.getConfigManager().getFloor(currentFloor);
         StageConfig firstStage = floor.getFirstStage();
 
-        broadcastMessage(plugin.getConfigManager().getMessage("floor_transition", "floor", currentFloor));
+        // Get party leader name for the message
+        String leaderName = getPartyLeaderName();
+        broadcastMessage("&6[DT] &e" + leaderName + "&7's party is attempting &cfloor " + currentFloor + " &7of Demon Tower!");
 
         if (firstStage.getType() == StageType.LOBBY) {
             // Wait in lobby
@@ -831,6 +950,7 @@ public class DemonTowerSession {
         collectedItems = 0;
         totalMobCount = 0;
         bossId = null;
+        partyLeader = null;
         lobbyCountdownStarted = false;
         stageCleared = false;
         stageWaitRemaining = 0;
@@ -897,6 +1017,16 @@ public class DemonTowerSession {
     // Getters
     public Set<UUID> getPlayers() {
         return Collections.unmodifiableSet(players);
+    }
+
+    public UUID getPartyLeader() {
+        return partyLeader;
+    }
+
+    public String getPartyLeaderName() {
+        if (partyLeader == null) return "Unknown";
+        Player leader = plugin.getServer().getPlayer(partyLeader);
+        return leader != null ? leader.getName() : "Unknown";
     }
 
     public int getCurrentFloor() {

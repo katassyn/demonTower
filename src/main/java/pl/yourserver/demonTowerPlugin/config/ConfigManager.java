@@ -113,20 +113,47 @@ public class ConfigManager {
 
                     // Parse spawn points
                     List<SpawnPoint> mobSpawnPoints = new ArrayList<>();
-                    List<?> mobSpawnsList = stageSection.getList("spawn_points.mobs");
-                    if (mobSpawnsList != null) {
-                        for (Object obj : mobSpawnsList) {
-                            SpawnPoint sp = parseSpawnPoint(obj);
-                            if (sp != null) {
-                                mobSpawnPoints.add(sp);
+                    SpawnPoint bossSpawnPoint = null;
+
+                    ConfigurationSection spawnPointsSection = stageSection.getConfigurationSection("spawn_points");
+                    if (spawnPointsSection != null) {
+                        // Parse mob spawn points
+                        List<?> mobSpawnsList = spawnPointsSection.getList("mobs");
+                        if (mobSpawnsList != null) {
+                            for (Object obj : mobSpawnsList) {
+                                SpawnPoint sp = parseSpawnPoint(obj);
+                                if (sp != null) {
+                                    mobSpawnPoints.add(sp);
+                                }
+                            }
+                        }
+
+                        // Parse boss spawn point
+                        ConfigurationSection bossSection = spawnPointsSection.getConfigurationSection("boss");
+                        if (bossSection != null) {
+                            // Boss is defined as a section with world, x, y, z keys
+                            String world = bossSection.getString("world", "world");
+                            double x = bossSection.getDouble("x");
+                            double y = bossSection.getDouble("y");
+                            double z = bossSection.getDouble("z");
+                            bossSpawnPoint = new SpawnPoint(world, x, y, z);
+                        } else {
+                            // Try to parse as a map object (inline YAML format)
+                            Object bossSpawnObj = spawnPointsSection.get("boss");
+                            if (bossSpawnObj != null) {
+                                bossSpawnPoint = parseSpawnPoint(bossSpawnObj);
                             }
                         }
                     }
 
-                    SpawnPoint bossSpawnPoint = null;
-                    Object bossSpawnObj = stageSection.get("spawn_points.boss");
-                    if (bossSpawnObj != null) {
-                        bossSpawnPoint = parseSpawnPoint(bossSpawnObj);
+                    // Log boss spawn point if loaded (debug info)
+                    if (boss != null && bossSpawnPoint != null) {
+                        plugin.getLogger().info("Floor " + floorNum + " Stage " + stageNum +
+                            ": Boss " + boss + " spawn point loaded at " +
+                            bossSpawnPoint.getX() + ", " + bossSpawnPoint.getY() + ", " + bossSpawnPoint.getZ());
+                    } else if (boss != null && bossSpawnPoint == null) {
+                        plugin.getLogger().warning("Floor " + floorNum + " Stage " + stageNum +
+                            ": Boss " + boss + " has no spawn point defined!");
                     }
 
                     stages.add(new StageConfig(floorNum, stageNum, type, warp, time, mobs, boss, collectItem, collectAmount,
