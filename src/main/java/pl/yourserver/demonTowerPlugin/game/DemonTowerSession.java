@@ -14,7 +14,6 @@ import pl.yourserver.demonTowerPlugin.utils.MessageUtils;
 import java.util.*;
 
 public class DemonTowerSession {
-
     private final DemonTowerPlugin plugin;
     private final Set<UUID> players = new HashSet<>();
     private final Set<UUID> aliveMobs = new HashSet<>();
@@ -539,7 +538,9 @@ public class DemonTowerSession {
         }
         if (shouldComplete) {
             broadcastMessage(reason);
-            plugin.getMythicMobsIntegration().killMobs(aliveMobs);
+            // FIX: Przekazujemy KOPIĘ kolekcji, aby uniknąć ConcurrentModificationException
+            // onMobKilled usuwa z aliveMobs, po którym właśnie iterujemy w killMobs
+            plugin.getMythicMobsIntegration().killMobs(new ArrayList<>(aliveMobs));
             aliveMobs.clear();
             completeStage();
         }
@@ -591,7 +592,8 @@ public class DemonTowerSession {
             double currentPercentage = totalMobCount > 0 ? (killedMobs / (double) totalMobCount) : 1.0;
 
             if (currentPercentage >= completionPercentage) {
-                plugin.getMythicMobsIntegration().killMobs(aliveMobs);
+                // FIX: Przekazujemy KOPIĘ kolekcji
+                plugin.getMythicMobsIntegration().killMobs(new ArrayList<>(aliveMobs));
                 aliveMobs.clear();
                 completeStage();
             }
@@ -621,7 +623,8 @@ public class DemonTowerSession {
         FloorConfig floor = plugin.getConfigManager().getFloor(currentFloor);
         if (floor == null) return;
 
-        plugin.getMythicMobsIntegration().killMobs(aliveMobs);
+        // FIX: Przekazujemy KOPIĘ kolekcji
+        plugin.getMythicMobsIntegration().killMobs(new ArrayList<>(aliveMobs));
         aliveMobs.clear();
 
         if (currentStage >= floor.getStageCount()) {
@@ -743,7 +746,6 @@ public class DemonTowerSession {
         }
 
         // FIX: Remove keys IMMEDIATELY when transition is initiated (not after 60s)
-        // This prevents players from hiding/giving keys for free passage
         FloorConfig nextFloor = plugin.getConfigManager().getFloor(currentFloor + 1);
         if (nextFloor != null && nextFloor.requiresKey()) {
             for (UUID playerId : players) {
@@ -807,7 +809,6 @@ public class DemonTowerSession {
         }
 
         // Keys are now removed in initiateFloorTransition() immediately
-        // No longer need to remove keys here (after 60s delay)
 
         currentFloor++;
         currentStage = 1;
@@ -833,13 +834,15 @@ public class DemonTowerSession {
                 player.setHealth(0);
             }
         }
-        plugin.getMythicMobsIntegration().killMobs(aliveMobs);
+        // FIX: Przekazujemy KOPIĘ kolekcji
+        plugin.getMythicMobsIntegration().killMobs(new ArrayList<>(aliveMobs));
         endSession(false);
     }
 
     public void endSession(boolean success) {
         stopAllTimers();
-        plugin.getMythicMobsIntegration().killMobs(aliveMobs);
+        // FIX: Przekazujemy KOPIĘ kolekcji
+        plugin.getMythicMobsIntegration().killMobs(new ArrayList<>(aliveMobs));
         aliveMobs.clear();
         players.clear();
         state = success ? SessionState.COMPLETED : SessionState.FAILED;
@@ -848,7 +851,8 @@ public class DemonTowerSession {
 
     public void reset() {
         stopAllTimers();
-        plugin.getMythicMobsIntegration().killMobs(aliveMobs);
+        // FIX: Przekazujemy KOPIĘ kolekcji
+        plugin.getMythicMobsIntegration().killMobs(new ArrayList<>(aliveMobs));
         aliveMobs.clear();
         currentFloor = 1;
         currentStage = 1;
