@@ -53,7 +53,7 @@ commands:
 permissions:
   demontower.play:
     description: Allows playing Demon Tower
-    default: true
+    default: op
   demontower.admin:
     description: Allows admin commands (reset, reload)
     default: op

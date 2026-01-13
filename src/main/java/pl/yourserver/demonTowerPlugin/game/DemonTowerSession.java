@@ -537,16 +537,12 @@ public class DemonTowerSession {
         if (shouldComplete) {
             broadcastMessage(reason);
 
-            // FIX: Zmieniona kolejność - najpierw czyścimy listę, potem zabijamy resztę.
-            // Zapobiega to pętli błędów, gdzie wyjątek przy zabijaniu (killMobs) powodował,
-            // że lista nigdy nie była czyszczona, a licznik rósł w nieskończoność (123/5).
             List<UUID> mobsToKill = new ArrayList<>(aliveMobs);
             aliveMobs.clear();
 
             try {
                 plugin.getMythicMobsIntegration().killMobs(mobsToKill);
             } catch (Exception e) {
-                // Logujemy błąd, ale pozwalamy na zakończenie etapu
                 plugin.getLogger().warning("[DT Debug] Error killing remaining mobs: " + e.getMessage());
             }
 
@@ -597,8 +593,6 @@ public class DemonTowerSession {
         }
 
         if (stage.getType() == StageType.WAVE) {
-            // FIX: Jeśli nie ma żywych mobów, etap MUSI się zakończyć.
-            // Naprawia problem "123/123", gdzie błędy w matematyce procentowej mogły blokować postęp.
             if (aliveMobs.isEmpty()) {
                 completeStage();
                 return;
@@ -609,7 +603,6 @@ public class DemonTowerSession {
             double currentPercentage = totalMobCount > 0 ? (killedMobs / (double) totalMobCount) : 1.0;
 
             if (currentPercentage >= completionPercentage) {
-                // Kopiujemy listę przed czyszczeniem dla bezpieczeństwa
                 List<UUID> mobsToKill = new ArrayList<>(aliveMobs);
                 aliveMobs.clear();
                 try {
@@ -645,7 +638,6 @@ public class DemonTowerSession {
         FloorConfig floor = plugin.getConfigManager().getFloor(currentFloor);
         if (floor == null) return;
 
-        // Upewniamy się, że moby są martwe i lista czysta
         if (!aliveMobs.isEmpty()) {
             List<UUID> mobsToKill = new ArrayList<>(aliveMobs);
             aliveMobs.clear();
@@ -661,7 +653,6 @@ public class DemonTowerSession {
                 broadcastMessage("&c[DEBUG] &7Advancing to next stage immediately...");
                 advanceToNextStage();
             } else {
-                // FIX: Krótki czas oczekiwania (5s) zamiast pełnego timera
                 stopTimer();
                 stageWaitRemaining = 5;
                 startStageWaitTimer();
@@ -712,6 +703,7 @@ public class DemonTowerSession {
     }
 
     private void startMechanicTimeout() {
+        // Powrót do 30 sekund w trybie debug (tak jak było wcześniej)
         mechanicTimeRemaining = plugin.getConfigManager().isDebugMode() ? 30 : MECHANIC_TIMEOUT;
         mechanicTimeoutTask = new BukkitRunnable() {
             @Override
@@ -991,7 +983,8 @@ public class DemonTowerSession {
     }
 
     public boolean canUseMechanics() {
-        return state == SessionState.FLOOR_COMPLETED || state == SessionState.FLOOR_TRANSITION;
+        // FIX: Dodano SessionState.COMPLETED, aby umożliwić dostęp do mechanik po ukończeniu całej wieży
+        return state == SessionState.FLOOR_COMPLETED || state == SessionState.FLOOR_TRANSITION || state == SessionState.COMPLETED;
     }
 
     public int getFloorTransitionRemaining() {
