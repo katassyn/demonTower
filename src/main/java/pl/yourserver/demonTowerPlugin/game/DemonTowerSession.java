@@ -189,6 +189,7 @@ public class DemonTowerSession {
         collectedItems = 0;
         killsSinceLastDrop = 0;
         debugKillCount = 0;
+        stageCleared = false;
 
         switch (stage.getType()) {
             case LOBBY:
@@ -239,17 +240,16 @@ public class DemonTowerSession {
                     UUID mobId = it.next();
                     if (!plugin.getMythicMobsIntegration().isMobValid(mobId)) {
                         it.remove();
-                        totalMobCount--;
+                        // Zostawiamy totalMobCount bez zmian, aby zniknięte moby liczyły się jako postęp
                         changed = true;
 
                         if (plugin.getConfigManager().isDebugMode()) {
-                            plugin.getLogger().info("[DT Sanity] Removed ghost mob: " + mobId + ". New Total: " + totalMobCount);
+                            plugin.getLogger().info("[DT Sanity] Removed ghost mob: " + mobId);
                         }
                     }
                 }
 
                 if (changed) {
-                    if (totalMobCount < 0) totalMobCount = 0;
                     checkStageComplete();
                 }
             }
@@ -505,8 +505,6 @@ public class DemonTowerSession {
     }
 
     public void onMobKilled(UUID mobId) {
-        // Ważne: remove(mobId) zwróci true tylko jeśli mob był na liście aliveMobs
-        // Dzięki temu nie zliczamy przypadkowych zabójstw
         if (aliveMobs.remove(mobId)) {
             if (plugin.getConfigManager().isDebugMode()) {
                 debugKillCount++;
@@ -538,10 +536,20 @@ public class DemonTowerSession {
         }
         if (shouldComplete) {
             broadcastMessage(reason);
-            // FIX: Przekazujemy KOPIĘ kolekcji, aby uniknąć ConcurrentModificationException
-            // onMobKilled usuwa z aliveMobs, po którym właśnie iterujemy w killMobs
-            plugin.getMythicMobsIntegration().killMobs(new ArrayList<>(aliveMobs));
+
+            // FIX: Zmieniona kolejność - najpierw czyścimy listę, potem zabijamy resztę.
+            // Zapobiega to pętli błędów, gdzie wyjątek przy zabijaniu (killMobs) powodował,
+            // że lista nigdy nie była czyszczona, a licznik rósł w nieskończoność (123/5).
+            List<UUID> mobsToKill = new ArrayList<>(aliveMobs);
             aliveMobs.clear();
+
+            try {
+                plugin.getMythicMobsIntegration().killMobs(mobsToKill);
+            } catch (Exception e) {
+                // Logujemy błąd, ale pozwalamy na zakończenie etapu
+                plugin.getLogger().warning("[DT Debug] Error killing remaining mobs: " + e.getMessage());
+            }
+
             completeStage();
         }
     }
@@ -551,7 +559,7 @@ public class DemonTowerSession {
             plugin.getLogger().info("[DemonTowerSession DEBUG] onItemCollected called with amount=" + amount);
         }
 
-        killsSinceLastDrop = 0; // Reset licznika dropu
+        killsSinceLastDrop = 0;
 
         FloorConfig floor = plugin.getConfigManager().getFloor(currentFloor);
         if (floor == null) return;
@@ -572,6 +580,8 @@ public class DemonTowerSession {
     }
 
     private void checkStageComplete() {
+        if (stageCleared) return;
+
         FloorConfig floor = plugin.getConfigManager().getFloor(currentFloor);
         if (floor == null) return;
         StageConfig stage = floor.getStage(currentStage);
@@ -587,14 +597,26 @@ public class DemonTowerSession {
         }
 
         if (stage.getType() == StageType.WAVE) {
+            // FIX: Jeśli nie ma żywych mobów, etap MUSI się zakończyć.
+            // Naprawia problem "123/123", gdzie błędy w matematyce procentowej mogły blokować postęp.
+            if (aliveMobs.isEmpty()) {
+                completeStage();
+                return;
+            }
+
             double completionPercentage = plugin.getConfigManager().getWaveCompletionPercentage();
             int killedMobs = totalMobCount - aliveMobs.size();
             double currentPercentage = totalMobCount > 0 ? (killedMobs / (double) totalMobCount) : 1.0;
 
             if (currentPercentage >= completionPercentage) {
-                // FIX: Przekazujemy KOPIĘ kolekcji
-                plugin.getMythicMobsIntegration().killMobs(new ArrayList<>(aliveMobs));
+                // Kopiujemy listę przed czyszczeniem dla bezpieczeństwa
+                List<UUID> mobsToKill = new ArrayList<>(aliveMobs);
                 aliveMobs.clear();
+                try {
+                    plugin.getMythicMobsIntegration().killMobs(mobsToKill);
+                } catch (Exception e) {
+                    plugin.getLogger().warning("Error clearing wave: " + e.getMessage());
+                }
                 completeStage();
             }
             return;
@@ -623,9 +645,12 @@ public class DemonTowerSession {
         FloorConfig floor = plugin.getConfigManager().getFloor(currentFloor);
         if (floor == null) return;
 
-        // FIX: Przekazujemy KOPIĘ kolekcji
-        plugin.getMythicMobsIntegration().killMobs(new ArrayList<>(aliveMobs));
-        aliveMobs.clear();
+        // Upewniamy się, że moby są martwe i lista czysta
+        if (!aliveMobs.isEmpty()) {
+            List<UUID> mobsToKill = new ArrayList<>(aliveMobs);
+            aliveMobs.clear();
+            plugin.getMythicMobsIntegration().killMobs(mobsToKill);
+        }
 
         if (currentStage >= floor.getStageCount()) {
             stopTimer();
@@ -636,13 +661,10 @@ public class DemonTowerSession {
                 broadcastMessage("&c[DEBUG] &7Advancing to next stage immediately...");
                 advanceToNextStage();
             } else {
-                if (timeRemaining > 0) {
-                    stageWaitRemaining = timeRemaining;
-                    stopTimer();
-                    startStageWaitTimer();
-                } else {
-                    advanceToNextStage();
-                }
+                // FIX: Krótki czas oczekiwania (5s) zamiast pełnego timera
+                stopTimer();
+                stageWaitRemaining = 5;
+                startStageWaitTimer();
             }
         }
     }
@@ -658,7 +680,7 @@ public class DemonTowerSession {
                 }
                 broadcastActionBar(plugin.getConfigManager().getMessage("waiting_next_stage",
                         "time", stageWaitRemaining));
-                if (stageWaitRemaining <= 5) {
+                if (stageWaitRemaining <= 3) {
                     broadcastTitle("&e" + stageWaitRemaining, "&7Next stage starting...", 0, 20, 0);
                 }
                 stageWaitRemaining--;
@@ -745,7 +767,6 @@ public class DemonTowerSession {
             return false;
         }
 
-        // FIX: Remove keys IMMEDIATELY when transition is initiated (not after 60s)
         FloorConfig nextFloor = plugin.getConfigManager().getFloor(currentFloor + 1);
         if (nextFloor != null && nextFloor.requiresKey()) {
             for (UUID playerId : players) {
@@ -808,8 +829,6 @@ public class DemonTowerSession {
             return;
         }
 
-        // Keys are now removed in initiateFloorTransition() immediately
-
         currentFloor++;
         currentStage = 1;
         state = SessionState.WAITING;
@@ -834,14 +853,12 @@ public class DemonTowerSession {
                 player.setHealth(0);
             }
         }
-        // FIX: Przekazujemy KOPIĘ kolekcji
         plugin.getMythicMobsIntegration().killMobs(new ArrayList<>(aliveMobs));
         endSession(false);
     }
 
     public void endSession(boolean success) {
         stopAllTimers();
-        // FIX: Przekazujemy KOPIĘ kolekcji
         plugin.getMythicMobsIntegration().killMobs(new ArrayList<>(aliveMobs));
         aliveMobs.clear();
         players.clear();
@@ -851,7 +868,6 @@ public class DemonTowerSession {
 
     public void reset() {
         stopAllTimers();
-        // FIX: Przekazujemy KOPIĘ kolekcji
         plugin.getMythicMobsIntegration().killMobs(new ArrayList<>(aliveMobs));
         aliveMobs.clear();
         currentFloor = 1;
